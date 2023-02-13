@@ -1,7 +1,6 @@
 rm(list=ls())
 
 #Topic: Interagency Ageing-up analysis
-#Author: Lydia Odero
 #Date: Feb 6, 2023
 
 library(readr)

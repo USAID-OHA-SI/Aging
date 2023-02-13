@@ -71,7 +71,7 @@ master_clientlist <- master_clientlist %>% mutate(
                             
 master_clientlist %>% group_by(art_init_period, age_group_art_init) %>% summarize(clients = n())
 
- # TXCURR  and IIT calculation****
+ #  IIT_TX_CURR calculation****
 
 
 

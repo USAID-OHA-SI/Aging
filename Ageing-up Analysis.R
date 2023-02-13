@@ -10,7 +10,7 @@ library(dplyr)
 library(lubridate)
 
 
-setwd("~/Work Directory/2. HIV_TB/Studies/Aging up Analysis/Interagency work/Updated data_03FEB2023")
+setwd("~/Data - 03FEB2023")
 
 
 # Client List Data Import and Management ----------------------------------------------
@@ -72,18 +72,8 @@ master_clientlist <- master_clientlist %>% mutate(
                             
 master_clientlist %>% group_by(art_init_period, age_group_art_init) %>% summarize(clients = n())
 
+ # TXCURR  and IIT calculation****
 
-# Appointments & Visits Data Import and Management ----------------------------------------------
-visits_data <- read_csv("Appointments.csv")
-
-#Renaming the variables and creating id2 based on id and facility
-visits_data <- visits_data %>% rename(im=`Implementing Partner`, facility=`Facility Name`, mfl_code=`Facility MFL Code`,
-                                    id=`Client Number(De-identified)`, appoint_date=`Appointment Date`, 
-                                    visit_date=`Actual Visit Date`) %>% 
-                               mutate(id2 =  paste0(mfl_code, "_", id))
-
-#Only working with clients who are in the master client list
-#Limitation: We'll need to drop duplicates based on id2
 
 
 

@@ -1,6 +1,6 @@
 rm(list=ls())
 
-#Topic: Interagency Ageing-up analysis
+
 #Date: Feb 6, 2023
 
 library(readr)
@@ -37,7 +37,7 @@ sum(duplicated(ref_clientlist))
 #Creating master client list based on facility, mfl code, county, id, sex, dob, ART initiation date, ART regimen at initiation and current ART regimen
 #Leaving out the implementing partner, orphan, county of residence and the ART regimen lined both at initiation and current
 
-master_clientlist <- clientlist %>% distinct(id, sex, dob, facility, mfl_code, county,date_art_init, reg_art_init, reg_art_current, id2)
+master_clientlist <- clientlist %>% distinct(id, sex, dob, facility, mfl_code, county,date_art_init, reg_art_current, id2)
 
 #Checking the difference between the master and the reference lists
 occurrence <- data.frame(table(master_clientlist$id2)) %>% rename(id2=Var1)

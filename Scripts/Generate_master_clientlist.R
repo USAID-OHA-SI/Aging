@@ -3,11 +3,10 @@ library(dplyr)
 library(lubridate)
 library(purrr)
 
-setwd("~/Data - 03FEB2023")
 
 # Client List Data Import and Management ----------------------------------------------
 #The client list
-clientlist <- read_csv("AgingOut_Feb162023.csv")
+clientlist <- read_csv("Data/AgingOut_Feb162023.csv")
 str(clientlist)
 dim(clientlist)
 

@@ -1,11 +1,10 @@
 library("tidyverse")
 library("data.table")
-library("purrr")
-library("lubridate")
 library("waterfalls")
 
 
-visits_data <- read_csv("Appointments.csv")
+visits_data <- read_csv("Data/Appointments.csv")
+master_clientlist <- read_csv("Dataout/master_clientlist.csv") #created from Scripts/Generate_master_clientlist.R
 
 #Renaming the variables and creating id2 based on id and facility
 visits_data <- visits_data %>% rename(im=`Implementing Partner`, facility=`Facility Name`, mfl_code=`Facility MFL Code`,

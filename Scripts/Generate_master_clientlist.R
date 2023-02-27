@@ -60,16 +60,31 @@ master_clientlist <- master_clientlist %>%
   filter(age_group_art_init != "15+ years") %>% 
   select(-age_group_art_init) %>% 
   mutate(age_out = dob %m+% years(15),
-         age_out_yr = case_when(
-           age_out >= ymd("2019-10-01") & age_out <= ymd("2020-09-30")  ~ "2019",
-           age_out >= ymd("2020-10-01") & age_out <= ymd("2021-09-30")  ~ "2020",
-           age_out >= ymd("2021-10-01") & age_out <= ymd("2022-09-30")  ~ "2021",
-           age_out >= ymd("2022-10-01") & age_out <= ymd("2023-09-30")  ~ "2022",
-           age_out >= ymd("2023-10-01") & age_out <= ymd("2024-09-30")  ~ "2023",
-           TRUE ~ "Other Years") )
+         age_out_yr = age_out %>%  
+           quarter(with_year = TRUE, fiscal_start = 10) %>% 
+           str_sub(3,4) %>% 
+           paste0("FY", .),
+         age_out_yr = ifelse(between(age_out, as.Date("2018-10-01"), as.Date("2023-09-30")), 
+                             age_out_yr, "Other Years"))
 
 # How many persons age-up in each year? 
 master_clientlist %>% 
   group_by(age_out_yr) %>% 
   summarise(n = n())
 
+
+# How many persons age-up in each year vs entering? 
+master_clientlist %>% 
+  mutate(enter = case_when(art_init_period != "Other Years" ~ art_init_period),
+         exit = case_when(age_out_yr != "Other Years" ~ age_out_yr)) %>% 
+  select(enter, exit) %>% 
+  filter(!c(is.na(enter) & is.na(exit))) %>% 
+  pivot_longer(everything(),
+               names_to = "type",
+               values_to = "fiscal_year",
+               values_drop_na = TRUE) %>% 
+  count(type, fiscal_year, name = "value") %>% 
+  pivot_wider(names_from = type)
+
+#export
+write_csv(master_clientlist, "Dataout/master_clientlist.csv", na = "")

@@ -38,15 +38,14 @@ master_clientlist<-filter(master_clientlist, !id2 %in% dupl)
 #Using the master_clientlist for subsequent analysis
 
 #Categorizing period of ART initiation
-
-master_clientlist <- master_clientlist %>% mutate(
-  art_init_period = case_when(
-    date_art_init >= "2018-10-01" & date_art_init <= "2019-09-30"  ~ "FY19",
-    date_art_init >= "2019-10-01" & date_art_init <= "2020-09-30"  ~ "FY20",
-    date_art_init >= "2020-10-01" & date_art_init <= "2021-09-30"  ~ "FY21",
-    date_art_init >= "2021-10-01" & date_art_init <= "2022-09-30"  ~ "FY22",
-    date_art_init >= "2022-10-01" & date_art_init <= "2023-09-30"  ~ "FY23", 
-    TRUE ~ "Other Years") )
+master_clientlist <- master_clientlist %>% 
+  mutate(art_init_period = date_art_init %>%  
+           quarter(with_year = TRUE, fiscal_start = 10) %>% 
+           str_sub(3,4) %>% 
+           paste0("FY", .),
+         art_init_period = ifelse(between(date_art_init, as.Date("2018-10-01"), as.Date("2023-09-30")), 
+                                  art_init_period, "Other Years")
+  ) 
 
 #Calculating age at ART initiation
 master_clientlist <- master_clientlist %>% filter(!(is.na(date_art_init)) & !(is.na(dob)))

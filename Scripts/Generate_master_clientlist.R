@@ -1,7 +1,4 @@
 library(tidyverse)
-library(dplyr)
-library(lubridate)
-library(purrr)
 
 
 # Client List Data Import and Management ----------------------------------------------

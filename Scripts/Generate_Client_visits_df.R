@@ -3,7 +3,7 @@ library("data.table")
 library("waterfalls")
 
 
-visits_data <- read_csv("Data/Appointments.csv")
+visits_data <- read_csv("Data/Appointments.csv", na = c("", "NA", "NULL"))
 master_clientlist <- read_csv("Dataout/master_clientlist.csv") #created from Scripts/Generate_master_clientlist.R
 
 #Renaming the variables and creating id2 based on id and facility

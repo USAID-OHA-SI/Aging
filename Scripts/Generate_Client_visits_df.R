@@ -19,14 +19,15 @@ visits_data <- visits_data %>% rename(im=`Implementing Partner`, facility=`Facil
 setDT(visits_data)
 
 # change the dates  from character to date format
-
-visits_data$visit_date <- as.Date(visits_data$visit_date, format = "%d/%m/%Y")
-visits_data$appoint_date <- as.Date(visits_data$appoint_date, format = "%d/%m/%Y")
-
-
+visits_data <- visits_data %>% 
+  mutate(across(c(visit_date, appoint_date), \(x) dmy(x)))
 
 # remove any visit with a NA appoint_date or NA visit_date and if duplicate
 # visits appear (2+), only take the first occurrence (1L)
+visits_data %>% 
+  
+
+
 clean_visits_data <- visits_data[
   i = !is.na(appoint_date) & !is.na(visit_date),
   j = .SD[1L],

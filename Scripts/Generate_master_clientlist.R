@@ -15,6 +15,9 @@ clientlist <- clientlist %>% rename(im=`Implementing Partner`, facility=`Facilit
                                     reg_art_current=`Current ART Regimen`,line_art_current=`Current ART Regimen Line`) %>% 
   mutate(id2 =  paste0(mfl_code, "_", id))
 
+#conver DOB to date
+clientlist <- clientlist %>% 
+  mutate(dob = as_date(dob) %>% ymd)
 
 #Creating distinct clients based on ids
 clientlist %>% distinct(id) #91,927 distinct clients based on client ids only from the 242,377 in the original dataset
@@ -35,10 +38,6 @@ master_clientlist<-filter(master_clientlist, !id2 %in% dupl)
 #Using the master_clientlist for subsequent analysis
 
 #Categorizing period of ART initiation
-
-master_clientlist$date_art_init <- ymd(master_clientlist$date_art_init)
-master_clientlist$dob <- ymd_hms(master_clientlist$dob)
-str(master_clientlist)
 
 master_clientlist <- master_clientlist %>% mutate(
   art_init_period = case_when(

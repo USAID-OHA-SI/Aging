@@ -2,6 +2,9 @@ library("tidyverse")
 library("data.table")
 library("purrr")
 library("lubridate")
+library("waterfalls")
+
+
 visits_data <- read_csv("Appointments.csv")
 
 #Renaming the variables and creating id2 based on id and facility
@@ -9,7 +12,10 @@ visits_data <- visits_data %>% rename(im=`Implementing Partner`, facility=`Facil
                                       id=`Client Number(De-identified)`, appoint_date=`Appointment Date`, 
                                       visit_date=`Actual Visit Date`) %>% 
   mutate(id2 =  paste0(mfl_code, "_", id)) %>% 
-  filter(!is.na(appoint_date) & !is.na(visit_date))
+  filter(!is.na(appoint_date) & !is.na(visit_date) & !is.null(appoint_date)) %>% 
+  filter(appoint_date != "NULL")
+
+
 
 setDT(visits_data)
 
@@ -18,8 +24,7 @@ setDT(visits_data)
 visits_data$visit_date <- as.Date(visits_data$visit_date, format = "%d/%m/%Y")
 visits_data$appoint_date <- as.Date(visits_data$appoint_date, format = "%d/%m/%Y")
 
-# Correcting '1900-01-01'
-visits_data$appoint_date[which(visits_data$appoint_date == "1900-01-01")] = NA
+
 
 # remove any visit with a NA appoint_date or NA visit_date and if duplicate
 # visits appear (2+), only take the first occurrence (1L)
@@ -63,14 +68,13 @@ clean_visits_data %>% distinct(id2) #88,110 distinct clients based on 1,800810 o
 
 #visits_data[["visit_id"]] <- row_number(visits_data)
 
-# create masterlist_2 with  client and visit data
+# create masterlist_2 with  client and visit data( right join - every id in master clinet list and all vists in clean vists data with ID2 apearing in matserclinetlist )
 operator <- merge(clean_visits_data, master_clientlist, by ="id2", all.y = TRUE)
 
 #data table will be sorted in ascending order based on the values in the id2 column.
 setkey(operator, id2)
 
-n_distinct(visits_data$id2)-n_distinct(operator$id2)#9635 client visit dates and we replaced with ART_init date
-# one more visits between July and September
+n_distinct(clean_visits_data$id2)-n_distinct(master_clientlist$id2)#-6575 clients in client list but with no visits 
 
 analyzeFiscalYear <- function(end_fy = as.Date("2022-09-30"), operator) {
   
@@ -128,11 +132,11 @@ analyzeFiscalYear <- function(end_fy = as.Date("2022-09-30"), operator) {
   
   # select the id2's of all the clients that have been lost
   lost_clients <- unique(rbind(lost_1mo_trt[, .(id2)], lost_3mo_trt[, .(id2)]))
-  lost_clients[, `:=`(lost_to_treatement = TRUE, active = FALSE)]
+  lost_clients[, `:=`(status = "lftu")]
   
   setkey(operator3, id2)
   active_clients <- operator3[!lost_clients][, .(id2)]
-  active_clients[, `:=`(lost_to_treatement = FALSE, active = TRUE)]
+  active_clients[, `:=`(status = "Active")]
   
   result <- rbind(lost_clients, active_clients)
   set(result, i = NULL, j = "fiscal_year_ending", value = end_fy)
@@ -145,36 +149,72 @@ analyzeFiscalYear <- function(end_fy = as.Date("2022-09-30"), operator) {
 fiscal_years       <- purrr::map(0:5, ~as.Date("2022-09-30") - years(.))
 all_years_analysis <- purrr::map(fiscal_years, analyzeFiscalYear, operator= operator) %>% rbindlist()
 
-all_yrs_analysis_wide<-dcast.data.table(all_years_analysis, id2 ~ fiscal_year_ending, value.var = "active")
+all_yrs_analysis_wide<-dcast.data.table(all_years_analysis, id2 ~ fiscal_year_ending, value.var = "status")
 
+debug(analyzeFiscalYear)
 
+analyzeFiscalYear(as.Date("2018-09-30"), operator = operator)
 
 # Merging visits data and  master client list 
-client_visits_df <- merge(master_clientlist,all_yrs_analysis_wide, by = "id2")
+client_visits_df <- merge(master_clientlist,all_yrs_analysis_wide, by = "id2",all.x = TRUE)
 
-## Check if the merged data has the same number of rows as the original data frames
+#Any theyear after LFTU  should be marked LFTU 
 
-if (nrow(client_visits_df) == (nrow(master_clientlist) + nrow(all_yrs_analysis_wide) - length(intersect(master_clientlist$id2, all_yrs_analysis_wide$id2)))) {
-  print("Merged data has the same number of rows as the original data frames.")
-} else {
-  print("Merged data does not have the same number of rows as the original data frames.")
-}
+setDT(client_visits_df)
 
-# we determine that the merged data does not have the same number of rows
-#we extract id2 from both dataframes  to match them and determine inconsistencies 
+client_visits_df[art_init_period == "FY19" & is.na(`2019-09-30`), `2019-09-30` := "New+LFTU"]
+client_visits_df[art_init_period == "FY19" & `2019-09-30` == "Active", `2019-09-30` := "New+Active"]
+client_visits_df[art_init_period == "FY19" & `2019-09-30` == "lftu", `2019-09-30` := "New+LFTU"]
+client_visits_df[art_init_period == "Other Years" & is.na(`2019-09-30`),  `2019-09-30` := "lftu"]
 
-id1 <- master_clientlist$id2
-id2 <- all_years_analysis$id2
 
-# Match the IDs to see if they are identical
-if (all(id1 %in% id2) && all(id2 %in% id1)) {
-  print("The IDs are identical.")
-} else {
-  print("The IDs are not identical.")
-}
+client_visits_df[art_init_period == "FY20" & is.na(`2020-09-30`), `2020-09-30` := "New+LFTU"]
+client_visits_df[art_init_period == "FY20" & `2020-09-30` == "Active", `2020-09-30` := "New+Active"]
+client_visits_df[art_init_period == "FY20" & `2020-09-30` == "lftu", `2020-09-30` := "New+LFTU"]
+client_visits_df[art_init_period == "Other Years" & is.na(`2020-09-30`),  `2020-09-30` := "lftu"]
 
-# Find the IDs that are not identical
-diff_ids <- unique(c(setdiff(id1, id2), setdiff(id2, id1)))
+client_visits_df[art_init_period == "FY21" & is.na(`2021-09-30`), `2021-09-30` := "New+LFTU"]
+client_visits_df[art_init_period == "FY21" & `2021-09-30` == "Active", `2021-09-30` := "New+Active"]
+client_visits_df[art_init_period == "FY21" & `2021-09-30` == "lftu", `2021-09-30` := "New+LFTU"]
+client_visits_df[art_init_period == "Other Years" & is.na(`2021-09-30`),  `2021-09-30` := "lftu"]
 
-# Tally the number of non-identical IDs
-num_diff_ids <- length(diff_ids) # 
+client_visits_df[art_init_period == "FY22" & is.na(`2022-09-30`), `2022-09-30` := "New+LFTU"]
+client_visits_df[art_init_period == "FY22" & `2022-09-30` == "Active", `2022-09-30` := "New+Active"]
+client_visits_df[art_init_period == "FY22" & `2022-09-30` == "lftu", `2022-09-30` := "New+LFTU"]
+client_visits_df[art_init_period == "Other Years" & is.na(`2022-09-30`),  `2022-09-30` := "lftu"]
+#... add the rest of the years here
+
+# handling lost to treatment propogation from one year to the next
+client_visits_df[!is.na(`2019-09-30`) & is.na(`2020-09-30`), `2020-09-30` := "lftu"]
+client_visits_df[!is.na(`2020-09-30`) & is.na(`2021-09-30`), `2021-09-30` := "lftu"]
+client_visits_df[!is.na(`2021-09-30`) & is.na(`2022-09-30`), `2022-09-30` := "lftu"]
+
+# should be zero
+client_visits_df[art_init_period %in% c("FY19", "Other Years") & is.na(`2019-09-30`)]
+client_visits_df[art_init_period %in% c("FY20", "Other Years") & is.na(`2020-09-30`)]
+client_visits_df[art_init_period %in% c("FY21", "Other Years") & is.na(`2021-09-30`)]
+client_visits_df[art_init_period %in% c("FY22", "Other Years") & is.na(`2022-09-30`)]
+
+client_visits_df[!is.na(`2019-09-30`) & is.na(`2020-09-30`), `2020-09-30` := "lftu"]
+client_visits_df[!is.na(`2020-09-30`) & is.na(`2021-09-30`), `2021-09-30` := "lftu"]
+client_visits_df[!is.na(`2021-09-30`) & is.na(`2022-09-30`), `2022-09-30` := "lftu"]
+
+
+client_visits_df[age_out_yr == "2022", `2022-09-30` := "Aged Out"]
+client_visits_df[age_out_yr == "2021", `2021-09-30` := "Aged Out"]
+client_visits_df[age_out_yr == "2020", `2020-09-30` := "Aged Out"]
+client_visits_df[age_out_yr == "2019", `2019-09-30` := "Aged Out"]
+
+client_visits_df[`2019-09-30` == "Aged Out", `2020-09-30` := "Aged Out"]
+client_visits_df[`2020-09-30` == "Aged Out", `2021-09-30` := "Aged Out"]
+client_visits_df[`2021-09-30` == "Aged Out", `2022-09-30` := "Aged Out"]
+#Visualizing script 
+
+head(client_visits_df)
+
+
+#Plotdata<-viz_df[!is.na(fiscal_year_ending), .N, by = .(fiscal_year_ending, resolved_status)]
+
+
+
+

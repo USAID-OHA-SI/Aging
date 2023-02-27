@@ -109,11 +109,32 @@ status_data <- binded_data %>%
   ungroup() %>% 
   mutate(status = ifelse(type == "Visit", "Active", type))
 
+#identify new
+status_new <- master_clientlist %>% 
+  mutate(period = date_art_init %>% 
+           quarter(with_year = TRUE, fiscal_start = 10) %>%
+           str_replace("20", "FY") %>% 
+           str_replace("\\.", "Q"),
+         is_new = TRUE) %>%
+  filter(between(date_art_init, min(clean_visits_data$visit_date, na.rm = TRUE), max(clean_visits_data$visit_date, na.rm = TRUE))) %>% 
+  select(id2, period, is_new)
+
+#merge on new initations
+status_data <- status_data %>% 
+  tidylog::full_join(status_new) %>% 
+  mutate(is_new = ifelse(is.na(is_new), FALSE, is_new),
+         status = ifelse(is_new == TRUE, "New", status))
+
+
 #agg table of status by period
 status_data %>% 
   count(period, status) %>% 
   pivot_wider(names_from = status,
-              values_from = n)
+              values_from = n) %>% 
+  relocate(New, `LTFU (-> RTT)`, .after = "Active")
+
+
+
 
 
 

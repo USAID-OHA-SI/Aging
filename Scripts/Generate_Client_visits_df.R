@@ -14,12 +14,12 @@
 
 # IMPORT ------------------------------------------------------------------
   
-  #read in data
+  #read in visits data
   visits_data <- read_csv("Data/Appointments.csv", na = c("", "NA", "NULL"))
+  
+  #read in master client list data
   master_clientlist <- read_csv("Dataout/master_clientlist.csv") #created from Scripts/Generate_master_clientlist.R
   
-
-
 # BASIC MUNGING -----------------------------------------------------------
 
   #Renaming the variables
@@ -87,7 +87,8 @@
   #ltfu (vs rtt) status
   clean_visits_data <- clean_visits_data %>% 
     mutate(ltfu = case_when(appoint_date + days(28) > max_appt ~ FALSE,
-                            is.na(next_visit_date) | visit_gap_actual > visit_gap_allowed ~ TRUE,
+                            is.na(next_visit_date) ~ TRUE,
+                            visit_gap_actual > visit_gap_allowed ~ TRUE,
                             TRUE ~ FALSE),
            rtt = case_when(ltfu == TRUE & is.na(next_visit_date) ~ FALSE,
                            ltfu & !is.na(next_visit_date) ~ TRUE))
@@ -149,10 +150,15 @@
                paste0(20, .) %>% 
                as.integer())
 
-  #filter by the max id per period to capture the status
+  #arrange by status (Active to come after LTFU in event they occur on the same day)
+    status_data <- status_data %>% 
+      mutate(status = factor(status, c("LTFU", "IIT (LTFU -> RTT)", "Active", "Aged Out"))) %>% 
+      arrange(id2, date, status)
+    
+  #filter by the last observed status per period to capture the status
     status_data <- status_data %>% 
       group_by(id2, period) %>% 
-      filter(date == max(date)) %>% 
+      filter(row_number() == max(row_number())) %>% 
       ungroup()
 
   #include new initiation (between bounds of visit dataset)
@@ -170,7 +176,10 @@
     filter(between(date_art_init, min(clean_visits_data$visit_date, na.rm = TRUE), max(clean_visits_data$visit_date, na.rm = TRUE)))
 
   #bind on new initations
-    status_data <- bind_rows(status_data, status_new)
+    status_data <- status_data %>% 
+      mutate(status = as.character(status)) %>% 
+      bind_rows(status_new) %>%
+      arrange(id2, date)
 
 
 # AGGREGATE TABLE ---------------------------------------------------------

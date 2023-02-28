@@ -77,7 +77,7 @@ date_ltfu <- clean_visits_data %>%
          visit_gap_planned = NA,
          visit_gap_allowed = NA,
          visit_gap_actual = NA,
-         type = ifelse(rtt == FALSE, "LTFU", "IIT (LTFU-> RTT)")) %>% 
+         type = ifelse(rtt == FALSE, "LTFU", "LTFU (-> RTT)")) %>% 
   filter(date <= max(clean_visits_data$visit_date))
 
 #add ageout date as row
@@ -131,7 +131,7 @@ status_new <- master_clientlist %>%
   filter(between(date_art_init, min(clean_visits_data$visit_date, na.rm = TRUE), max(clean_visits_data$visit_date, na.rm = TRUE))) %>% 
   select(id2, date = date_art_init, period, type, status, is_new)
 
-#bind on new initations
+# on new initations
 status_data <- status_data %>% 
   # tidylog::full_join(status_new) %>% 
   bind_rows(status_new)
@@ -144,7 +144,7 @@ status_data %>%
   count(period, status) %>% 
   pivot_wider(names_from = status,
               values_from = n) %>% 
-  relocate(New, `IIT (LTFU-> RTT)`, .after = "Active")
+  relocate(New, `LTFU (-> RTT)`, .after = "Active")
 
 
 

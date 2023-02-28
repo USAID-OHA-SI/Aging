@@ -77,7 +77,7 @@ date_ltfu <- clean_visits_data %>%
          visit_gap_planned = NA,
          visit_gap_allowed = NA,
          visit_gap_actual = NA,
-         type = ifelse(rtt == FALSE, "LTFU", "LTFU (-> RTT)")) %>% 
+         type = ifelse(rtt == FALSE, "LTFU", "IIT (LTFU-> RTT)")) %>% 
   filter(date <= max(clean_visits_data$visit_date))
 
 #add ageout date as row
@@ -144,7 +144,7 @@ status_data %>%
   count(period, status) %>% 
   pivot_wider(names_from = status,
               values_from = n) %>% 
-  relocate(New, `LTFU (-> RTT)`, .after = "Active")
+  relocate(New, `IIT (LTFU-> RTT)`, .after = "Active")
 
 
 

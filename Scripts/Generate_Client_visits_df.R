@@ -1,4 +1,5 @@
 library("tidyverse")
+#also uses explicit references to the tidylog package for reviewing filter effects
 
 #read in data
 visits_data <- read_csv("Data/Appointments.csv", na = c("", "NA", "NULL"))
@@ -7,8 +8,12 @@ master_clientlist <- read_csv("Dataout/master_clientlist.csv") #created from Scr
 #Renaming the variables and creating id2 based on id and facility
 visits_data <- visits_data %>% rename(im=`Implementing Partner`, facility=`Facility Name`, mfl_code=`Facility MFL Code`,
                                       id=`Client Number(De-identified)`, appoint_date=`Appointment Date`, 
-                                      visit_date=`Actual Visit Date`) %>% 
-  mutate(id2 =  paste0(mfl_code, "_", id)) 
+                                      visit_date=`Actual Visit Date`) 
+
+#create id2 to map onto master list
+visits_data <- visits_data %>% 
+  mutate(id =  str_sub(id, -8)) %>% 
+  unite(id2, c(mfl_code, id))
 
 #remove any visits that don't have a future appointment or an invalid date
 visits_data <-  visits_data %>%  
@@ -26,13 +31,13 @@ visits_data <- visits_data %>%
 max_appt <- max(visits_data$visit_date, na.rm = TRUE)
 
 # remove duplicate entries
-clean_visits_data <- distinct(visits_data) 
+clean_visits_data <- tidylog::distinct(visits_data) 
 
 #Only working with clients who are in the master client list
 #Limitation: We'll need to drop duplicates based on id2
 # check for duplicates  based on id2
 
-clean_visits_data %>% distinct(id2) %>% nrow() #88,110 distinct clients based on 1,800810 observations in the visits_dataset
+clean_visits_data %>% distinct(id2) %>% nrow() #88,009 distinct clients based on 1,800810 observations in the visits_dataset
 
 #add in the next visit date for calculating duration between appointments
 clean_visits_data <- clean_visits_data %>% 
@@ -43,7 +48,7 @@ clean_visits_data <- clean_visits_data %>%
 
 #reorder columns for ease of review
 clean_visits_data <- clean_visits_data %>% 
-  relocate(id2, .after = id) %>% 
+  relocate(id2, facility, .before = 1) %>% 
   relocate(visit_date, .before = appoint_date)
 
 #calculation duration between visits (proxy = 28 days after planned gap)
@@ -70,25 +75,30 @@ date_ltfu <- clean_visits_data %>%
          appoint_date = NA,
          next_visit_date = NA,
          visit_gap_planned = NA,
+         visit_gap_allowed = NA,
          visit_gap_actual = NA,
          type = ifelse(rtt == FALSE, "LTFU", "LTFU (-> RTT)")) %>% 
   filter(date <= max(clean_visits_data$visit_date))
 
 #add ageout date as row
 date_ageout <- master_clientlist %>% 
-  select(id, id2, facility, mfl_code, age_out) %>% 
-  filter(age_out <= max(clean_visits_data$visit_date)) %>% 
-  mutate(date = age_out,
+  select(id2, date_age_out) %>% 
+  filter(date_age_out <= max(clean_visits_data$visit_date)) %>% 
+  mutate(date = date_age_out,
          type = "Aged Out") 
 
 #merge on age data 
 clean_visits_data <- clean_visits_data %>% 
   left_join(master_clientlist,
-            by = join_by(id, id2, facility, mfl_code))
+            by = join_by(id2, facility))
 
-#remove patients 15+ years old
+#relocate patient data closer to id
 clean_visits_data <- clean_visits_data %>% 
-  filter(visit_date < age_out)
+  relocate(sex:date_age_out, .after = id2)
+
+#remove patients after 15+ years old
+clean_visits_data <- clean_visits_data %>% 
+  tidylog::filter(visit_date < date_age_out)
 
 #bind date of ltfu date + age out date back onto dataset
 binded_data <- clean_visits_data %>% 
@@ -115,15 +125,18 @@ status_new <- master_clientlist %>%
            quarter(with_year = TRUE, fiscal_start = 10) %>%
            str_replace("20", "FY") %>% 
            str_replace("\\.", "Q"),
+         type = "New",
+         status = "New",
          is_new = TRUE) %>%
   filter(between(date_art_init, min(clean_visits_data$visit_date, na.rm = TRUE), max(clean_visits_data$visit_date, na.rm = TRUE))) %>% 
-  select(id2, period, is_new)
+  select(id2, date = date_art_init, period, type, status, is_new)
 
-#merge on new initations
+#bind on new initations
 status_data <- status_data %>% 
-  tidylog::full_join(status_new) %>% 
-  mutate(is_new = ifelse(is.na(is_new), FALSE, is_new),
-         status = ifelse(is_new == TRUE, "New", status))
+  # tidylog::full_join(status_new) %>% 
+  bind_rows(status_new)
+  # mutate(is_new = ifelse(is.na(is_new), FALSE, is_new),
+  #        status = ifelse(is_new == TRUE, "New", status))
 
 
 #agg table of status by period

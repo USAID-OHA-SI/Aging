@@ -140,7 +140,7 @@
 # IDENTIFY STATUS BY PERIOD -----------------------------------------------
 
   #apply fiscal quarter
-    status_data <- binded_visits_data %>% 
+    binded_visits_data <- binded_visits_data %>% 
       mutate(period = date %>% 
                quarter(with_year = TRUE, fiscal_start = 10) %>%
                str_replace("20", "FY") %>% 
@@ -151,7 +151,7 @@
                as.integer())
 
   #arrange by status (Active to come after LTFU in event they occur on the same day)
-    status_data <- status_data %>% 
+    status_data <- binded_visits_data %>% 
       mutate(status = factor(status, c("LTFU", "IIT (LTFU -> RTT)", "Active", "Aged Out"))) %>% 
       arrange(id2, date, status)
     
@@ -182,18 +182,46 @@
       arrange(id2, date)
 
 
+# IDENTIFY STATUS BY FISCAL YEAR ------------------------------------------
+
+
+    #arrange by status (Active to come after LTFU in event they occur on the same day)
+    status_data_fy <- binded_visits_data %>% 
+      mutate(status = factor(status, c("LTFU", "IIT (LTFU -> RTT)", "Active", "Aged Out"))) %>% 
+      arrange(id2, date, status)
+    
+    #filter by the last observed status per period to capture the status
+    status_data_fy <- status_data_fy %>% 
+      group_by(id2, fiscal_year) %>% 
+      filter(row_number() == max(row_number())) %>% 
+      ungroup()
+    
+    #bind on new initations
+    status_data_fy <- status_data_fy %>% 
+      mutate(status = as.character(status)) %>% 
+      bind_rows(status_new) %>%
+      arrange(id2, date)
+    
+    
 # AGGREGATE TABLE ---------------------------------------------------------
 
   #agg table of status by quarter (period)
   status_data %>% 
-    count(period, status) %>% 
+    count(fiscal_year, period, status) %>% 
     pivot_wider(names_from = status,
                 values_from = n) %>% 
-    relocate(New, Active, `IIT (LTFU -> RTT)`, .after = 1)
+    relocate(New, Active, `IIT (LTFU -> RTT)`, .after = 2)
+
+
+  #agg table of status by fiscal_year 
+    status_data_fy %>% 
+      count(fiscal_year, status) %>% 
+      pivot_wider(names_from = status,
+                  values_from = n) %>% 
+      relocate(New, Active, `IIT (LTFU -> RTT)`, LTFU, .after = 2)
 
 
 
-
-
-
-
+    
+    
+   

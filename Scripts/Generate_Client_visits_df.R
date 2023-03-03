@@ -175,8 +175,9 @@
                as.integer(),
              status = "New",
              date = date_art_init) %>%
-      tidylog::filter(between(date_art_init, min(clean_visits_data$visit_date, na.rm = TRUE), max(clean_visits_data$visit_date, na.rm = TRUE))) %>% 
-      tidylog::filter(date_age_out > date_art_init)
+      tidylog::filter(date_age_out > date_art_init) %>% 
+      tidylog::filter(id2 %in% clean_visits_data$id2) %>% 
+      tidylog::filter(between(date_art_init, min(clean_visits_data$visit_date, na.rm = TRUE), max(clean_visits_data$visit_date, na.rm = TRUE)))
 
   #bind on new initations
     status_data <- status_data %>% 

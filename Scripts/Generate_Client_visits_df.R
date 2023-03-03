@@ -102,7 +102,8 @@
 
   #add ageout date as row
     date_ageout <- master_clientlist %>% 
-      filter(date_age_out <= max(clean_visits_data$visit_date)) %>% 
+      tidylog::filter(date_age_out <= max(clean_visits_data$visit_date)) %>% 
+      tidylog::filter(id2 %in% clean_visits_data$id2) %>% 
       mutate(date = date_age_out,
              status = "Aged Out") 
 

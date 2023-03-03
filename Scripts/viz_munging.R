@@ -52,7 +52,7 @@
     count(fiscal_year, status_start_yr, status_end_yr, name = "patients", sort = TRUE) %>% 
     mutate(status_start_yr = case_match(status_start_yr,
                                         "Active" ~ "1. Active",
-                                        "IIT" ~ "2. IIT",
+                                        "IIT" ~ "2. RTT",
                                         "New" ~ "3. New",
                                         # .default = status_start_yr), #check that no missing categories
                                         .default = "4. Unclassified"),

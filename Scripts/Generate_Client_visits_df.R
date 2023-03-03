@@ -4,7 +4,7 @@
 # REF ID:   be2d1a77 
 # LICENSE:  MIT
 # DATE:     2023-02-28
-# UPDATED: 
+# UPDATED:  2023-03-03
 
 # DEPENDENCIES ------------------------------------------------------------
   
@@ -149,7 +149,7 @@
                str_sub(3,4) %>% 
                paste0(20, .) %>% 
                as.integer())
-
+    
   #arrange by status (Active to come after LTFU in event they occur on the same day)
     status_data <- binded_visits_data %>% 
       mutate(status = factor(status, c("LTFU", "IIT (LTFU -> RTT)", "Active", "Aged Out"))) %>% 
@@ -183,7 +183,6 @@
 
 
 # IDENTIFY STATUS BY FISCAL YEAR ------------------------------------------
-
 
     #arrange by status (Active to come after LTFU in event they occur on the same day)
     status_data_fy <- binded_visits_data %>% 
@@ -222,6 +221,26 @@
 
 
 
+# EXPORT ------------------------------------------------------------------
+
+  #export
+    write_csv(binded_visits_data, "Dataout/aging_patient-status_date.csv", na = "")
+    zip("Dataout/aging_patient-status_date.zip",
+        "Dataout/aging_patient-status_date.csv", extras = "-j")
+    unlink("Dataout/aging_patient-status_date.csv")
+    
+    write_csv(status_data, "Dataout/aging_patient-status_quarter.csv", na = "")
+    zip("Dataout/aging_patient-status_quarter.zip",
+        "Dataout/aging_patient-status_quarter.csv", extras = "-j")
+    unlink("Dataout/aging_patient-status_quarter.csv")
+    
+    write_csv(status_data_fy, "Dataout/aging_patient-status_fy.csv", na = "")
+    zip("Dataout/aging_patient-status_fy.zip",
+        "Dataout/aging_patient-status_fy.csv", extras = "-j")
+    unlink("Dataout/aging_patient-status_fy.csv")
+  
     
     
+    
+
    

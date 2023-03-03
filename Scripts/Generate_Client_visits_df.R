@@ -161,7 +161,7 @@
       filter(row_number() == max(row_number())) %>% 
       ungroup()
 
-  #include new initiation (between bounds of visit dataset)
+  #include new initiation (between bounds of visit dataset and excluded 15+)
   status_new <- master_clientlist %>% 
     mutate(period = date_art_init %>% 
              quarter(with_year = TRUE, fiscal_start = 10) %>%
@@ -173,7 +173,8 @@
              as.integer(),
            status = "New",
            date = date_art_init) %>%
-    filter(between(date_art_init, min(clean_visits_data$visit_date, na.rm = TRUE), max(clean_visits_data$visit_date, na.rm = TRUE)))
+    tidylog::filter(between(date_art_init, min(clean_visits_data$visit_date, na.rm = TRUE), max(clean_visits_data$visit_date, na.rm = TRUE))) %>% 
+    tidylog::filter(date_age_out > date_art_init)
 
   #bind on new initations
     status_data <- status_data %>% 

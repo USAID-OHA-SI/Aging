@@ -102,6 +102,7 @@
 
   #add ageout date as row
     date_ageout <- master_clientlist %>% 
+      tidylog::filter(date_age_out > date_art_init) %>% 
       tidylog::filter(date_age_out <= max(clean_visits_data$visit_date)) %>% 
       tidylog::filter(id2 %in% clean_visits_data$id2) %>% 
       mutate(date = date_age_out,
@@ -109,8 +110,8 @@
 
   #merge on age data (for filtering)
     merged_visits_data <- clean_visits_data %>% 
-      left_join(master_clientlist,
-                by = join_by(id2, facility))
+      tidylog::left_join(master_clientlist,
+                by = c("id2", "facility"))
     
   #relocate patient data closer to id
     merged_visits_data <- merged_visits_data %>% 
@@ -163,19 +164,19 @@
       ungroup()
 
   #include new initiation (between bounds of visit dataset and excluded 15+)
-  status_new <- master_clientlist %>% 
-    mutate(period = date_art_init %>% 
-             quarter(with_year = TRUE, fiscal_start = 10) %>%
-             str_replace("20", "FY") %>% 
-             str_replace("\\.", "Q"),
-           fiscal_year = period %>% 
-             str_sub(3,4) %>% 
-             paste0(20, .) %>% 
-             as.integer(),
-           status = "New",
-           date = date_art_init) %>%
-    tidylog::filter(between(date_art_init, min(clean_visits_data$visit_date, na.rm = TRUE), max(clean_visits_data$visit_date, na.rm = TRUE))) %>% 
-    tidylog::filter(date_age_out > date_art_init)
+    status_new <- master_clientlist %>% 
+      mutate(period = date_art_init %>% 
+               quarter(with_year = TRUE, fiscal_start = 10) %>%
+               str_replace("20", "FY") %>% 
+               str_replace("\\.", "Q"),
+             fiscal_year = period %>% 
+               str_sub(3,4) %>% 
+               paste0(20, .) %>% 
+               as.integer(),
+             status = "New",
+             date = date_art_init) %>%
+      tidylog::filter(between(date_art_init, min(clean_visits_data$visit_date, na.rm = TRUE), max(clean_visits_data$visit_date, na.rm = TRUE))) %>% 
+      tidylog::filter(date_age_out > date_art_init)
 
   #bind on new initations
     status_data <- status_data %>% 

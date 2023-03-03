@@ -85,14 +85,14 @@
              visit_gap_actual = next_visit_date - visit_date) 
 
   #ltfu (vs rtt) status
-  clean_visits_data <- clean_visits_data %>% 
-    mutate(ltfu = case_when(appoint_date + days(28) > max_appt ~ FALSE,
-                            is.na(next_visit_date) ~ TRUE,
-                            visit_gap_actual > visit_gap_allowed ~ TRUE,
-                            TRUE ~ FALSE),
-           rtt = case_when(ltfu == TRUE & is.na(next_visit_date) ~ FALSE,
-                           ltfu & !is.na(next_visit_date) ~ TRUE))
-
+    clean_visits_data <- clean_visits_data %>% 
+      mutate(ltfu = case_when(appoint_date + days(28) > max_appt ~ FALSE,
+                              is.na(next_visit_date) ~ TRUE,
+                              visit_gap_actual > visit_gap_allowed ~ TRUE,
+                              TRUE ~ FALSE),
+             rtt = case_when(ltfu == TRUE & is.na(next_visit_date) ~ FALSE,
+                             ltfu & !is.na(next_visit_date) ~ TRUE))
+    
   #create type for adding in different datesets
     clean_visits_data <- clean_visits_data %>% 
       mutate(status = "Active",
@@ -102,7 +102,7 @@
 
   #add ageout date as row
     date_ageout <- master_clientlist %>% 
-      tidylog::filter(date_age_out > date_art_init) %>% 
+      # tidylog::filter(date_age_out > date_art_init) %>% 
       tidylog::filter(date_age_out <= max(clean_visits_data$visit_date)) %>% 
       tidylog::filter(id2 %in% clean_visits_data$id2) %>% 
       mutate(date = date_age_out,
@@ -131,13 +131,18 @@
 
   #bind date of ltfu date + age out date back onto dataset
     binded_visits_data <- merged_visits_data %>% 
-      bind_rows(date_ltfu, date_ageout) %>%
+      bind_rows(date_ltfu, date_ageout) %>% 
       arrange(id2, date)
 
   #remove patients after 15+ years old
     binded_visits_data <- binded_visits_data %>% 
       tidylog::filter(date <= date_age_out)
   
+  #remove patients where only observation is aging out
+    binded_visits_data <- binded_visits_data %>% 
+      group_by(id2) %>% 
+      tidylog::filter(!(status == "Aged Out" & n() == 1)) %>% 
+      ungroup()
 
 # IDENTIFY STATUS BY PERIOD -----------------------------------------------
 

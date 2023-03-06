@@ -55,7 +55,7 @@
       relocate(visit_date, .before = appoint_date)
     
   #identify the latest visit date in dataset (filter out future LTFU/age out later)
-    max_appt <- max(visits_data$visit_date, na.rm = TRUE)
+    max_visit <- max(visits_data$visit_date, na.rm = TRUE)
 
 
 # REMOVE DUPLICATES AND CREATE NEXT VISIT OBS -----------------------------
@@ -86,7 +86,7 @@
 
   #ltfu (vs rtt) status
     clean_visits_data <- clean_visits_data %>% 
-      mutate(ltfu = case_when(appoint_date + days(28) > max_appt ~ FALSE,
+      mutate(ltfu = case_when(appoint_date + days(28) > max_visit ~ FALSE,
                               is.na(next_visit_date) ~ TRUE,
                               visit_gap_actual > visit_gap_allowed ~ TRUE,
                               TRUE ~ FALSE),
@@ -103,7 +103,7 @@
   #add ageout date as row
     date_ageout <- master_clientlist %>% 
       # tidylog::filter(date_age_out > date_art_init) %>% 
-      tidylog::filter(date_age_out <= max(clean_visits_data$visit_date)) %>% 
+      tidylog::filter(date_age_out <= max_visit) %>% 
       tidylog::filter(id2 %in% clean_visits_data$id2) %>% 
       mutate(date = date_age_out,
              status = "Aged Out") 
@@ -238,10 +238,10 @@
         "Dataout/aging_patient-status_date.csv", extras = "-j")
     unlink("Dataout/aging_patient-status_date.csv")
     
-    write_csv(status_data, "Dataout/aging_patient-status_quarter.csv", na = "")
-    zip("Dataout/aging_patient-status_quarter.zip",
-        "Dataout/aging_patient-status_quarter.csv", extras = "-j")
-    unlink("Dataout/aging_patient-status_quarter.csv")
+    write_csv(status_data, "Dataout/aging_patient-status_qtr.csv", na = "")
+    zip("Dataout/aging_patient-status_qtr.zip",
+        "Dataout/aging_patient-status_qtr.csv", extras = "-j")
+    unlink("Dataout/aging_patient-status_qtr.csv")
     
     write_csv(status_data_fy, "Dataout/aging_patient-status_fy.csv", na = "")
     zip("Dataout/aging_patient-status_fy.zip",

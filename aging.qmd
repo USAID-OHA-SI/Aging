@@ -1,50 +1,38 @@
 ---
-title: "Tracking LTFU + Aging Out"
+title: "Tracking Pediatric LTFU + Aging Out | Kenya"
+author: "Aaron Chafetz, Nelly Maina, and Lydia Odero"
 format: docx
-editor: visual
+editor: source
 ---
 
 ## Background
 
-The Kenya team is wanted to conduct a retrospective analysis to examine the pattern in treatment outcomes and interruptions in treatment among pediatric clients (\<15). The data used here come from the Kenya National Data Warehouse (NDW).
+Continuity on treatment (CoT) is vital for viral suppression of clients on treatment. CoT estimates among C/ALHIV are lower than adults. Aging-up may distort proxy CoT estimates. There is a need to take a deep-dive into the outcomes of CALHIV on treatment through individual level data to quantify the proportion accounted for by aging-up. The data used here come from the Kenya National Data Warehouse (NDW).
 
-## Munging: Master Client List
+## Setup
 
 We'll be working with two files from NDW's relational database - (1) a master client list and (2) a client visits log. We'll need to munge the master client list and merge as well as append that onto the visits log.
 
-Load up the packages we'll need.
+Before we import the data, we first will want to load the packages we'll be using. Please note that `tidyverse` is `v2.0.0`, which now includes the `lubridate` package (used in this analysis).
 
 ```{r}
 #| label: dependencies 
+# library(tidylog, warn.conflicts = FALSE) #explicitly referenced for detailing filtering/merging results
 library(tidyverse)
-# library(tidylog, warn.conflicts = FALSE)
 library(scales, warn.conflicts = FALSE)
-
-# options("tidylog.display" = list())
-
 ```
 
-Let's import the first dataset.
+First we can import the master list...
 
 ```{r}
-#| label: clients_load
+#| label: import_client
 #| cache: true
 
-#import the master client list
 clientlist <- read_csv("Data/AgingOut_Feb162023.csv",
                        col_types = list(.default = "c",
                                         `ART Initiation Date` = "D"))
 
-glimpse(clientlist)
-
-```
-
-Looking at the data, we should first clean up the variable names to make them easier to work with and then adjust the class of DOB which is a string data-time variable.
-
-```{r}
-#| label: clients_rename
-  #Renaming the variables
-    clientlist <- clientlist %>% 
+clientlist <- clientlist %>% 
       rename(im=`Implementing Partner`, 
              facility=`Facility Name`, 
              mfl_code=`Facility MFL Code`,
@@ -60,68 +48,145 @@ Looking at the data, we should first clean up the variable names to make them ea
              reg_art_current=`Current ART Regimen`,
              line_art_current=`Current ART Regimen Line`)
 
-  #convert DOB to date
+glimpse(clientlist)
+
+```
+
+...and then the visit data.
+
+```{r}
+#| label: import_visits
+#| cache: true
+
+visits_data <- read_csv("Data/Appointments.csv", 
+                        na = c("", "NA", "NULL"),
+                        col_types = list(.default = "c"))
+
+visits_data <- visits_data %>% 
+  rename(im=`Implementing Partner`, 
+         facility=`Facility Name`, 
+         mfl_code=`Facility MFL Code`,
+         id=`Client Number(De-identified)`, 
+         appoint_date=`Appointment Date`, 
+         visit_date=`Actual Visit Date`) 
+
+glimpse(visits_data)
+```
+
+For simplicity, we will truncate number of characters in the id, making it easier to review, but still keeping it unique.
+
+```{r}
+#| label: ids
+
+#capture the number of unique ids before truncating
+  orig_unique <- length(unique(clientlist$id)) 
+
+#truncate id to the last 9 characters in the client list
+  clientlist <- clientlist %>% 
+    mutate(id = str_sub(id, -9))
+
+#are the truncated ids still unique?
+  length(unique(clientlist$id)) == orig_unique
+  
+    paste("There are", length(unique(clientlist$id)) %>% comma, "unique clients")
+    
+#truncate id to the last 9 characters in the visit
+  visits_data <- visits_data %>% 
+    mutate(id =  str_sub(id, -9))
+```
+
+## Munging: Master Client List
+
+Of the two datasets, we'll start by munging the master client list, `clientlist`. Looking at the data, we adjust the class of `DOB`, date of birth,  which is a string data-time variable and we want to store it as just as just a date.
+
+```{r}
+#| label: clients_dob
+
+  #convert dob to date
   clientlist <- clientlist %>% 
     mutate(dob = as_date(dob) %>% ymd)
   
   glimpse(clientlist)
 ```
 
-Within the master client dataset (records = `r nrow(clientlist) |> comma()`) there are `r unique(clientlist$id) |> length() |> comma()` unique patient ids (`id`). This number can further refined if we look at unique patient x site reporting, which is `r distinct(clientlist, facility, id) |> nrow() |> comma()`. We will create a new id that combines the facility and patient id (truncating the patient id to make it easier to review, but still keeping it unique).
+Within the master client list there are `r unique(clientlist$id) |> length() |> comma()` unique clients (`id`) despite there being `r nrow(clientlist) |> comma()`) records. The extra rows are a result of the client visiting multiple facilities over the course of their care. Since the meta client data may slightly vary (e.g. the birth date may be entered differently or the ART regimen line at initiation may not match), we need to just pick on of these rows of observation. We will use the visits dataset, `visits_data`, to identify the last visit for a given client and then use the information available at this facility to replace the rest of the client metadata.
 
 ```{r}
-#| label: clients_id
+#| label: client_lastest
 
-#creating id2 based on patient id and facility id
-  clientlist <- clientlist %>% 
-    mutate(id =  str_sub(id, -8)) %>% 
-    unite(id2, c(mfl_code, id)) 
+#identify the latest visit/current facility for a client
+  curr_facility <- visits_data %>%
+    mutate(visit_date = dmy(visit_date)) %>% 
+    group_by(id) %>% 
+    filter(visit_date == max(visit_date)) %>% 
+    ungroup() %>% 
+    distinct(id, mfl_code) %>% 
+    mutate(current_facility = TRUE)
 
-    paste(length(unique(clientlist$id2)) %>% comma, "unique clients")
+#ensure full list of ids after filtering
+  length(unique(visits_data$id)) == length(unique(curr_facility$id))
+
+#limit dataset to only key variables, remove other meta data info at earlier facilities and replace with current
+clientlist <- clientlist %>%
+  select(id, mfl_code, sex, dob, facility, county, date_art_init, reg_art_current) %>% 
+  group_by(id) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  tidylog::left_join(curr_facility, by = c("id", "mfl_code")) %>% 
+  mutate(current_facility = ifelse(is.na(current_facility), FALSE, current_facility),
+         across(c(sex, dob, date_art_init, reg_art_current), \(x) case_when(current_facility | n == 1 ~ x))) %>% 
+  group_by(id) %>% 
+  fill(c(sex, dob, date_art_init, reg_art_current), .direction = "updown") %>% 
+  ungroup() %>% 
+  select(-c(n, current_facility))
 ```
 
-We don't need all the data in this dataset, so let's simplify things.
-
 ```{r}
-#| label: clients_distinct
+#| label: client_fac_dups
+#| echo: false
+multi_vals <- clientlist %>% 
+  group_by(id, mfl_code) %>% 
+  filter(n() > 1) %>% 
+  ungroup() 
 
-  #distinct table excludes the IP, orphan, county of residence and the ART regimen lined both at initiation and current
-  master_clientlist <- clientlist %>% 
-    distinct(id2, sex, dob, facility, county,date_art_init, reg_art_current)
+multi_clients <- multi_vals %>% 
+  distinct(id) %>% 
+  nrow()
 ```
 
-The data aren't perfect, as we can see that `r master_clientlist %>% group_by(id2) %>% filter(n() > 1) %>% ungroup() %>% distinct(id2) %>% nrow()` clients appear more than once.
+If we review this client dataset, we notice that there are a `r nrow(multi_vals) ` cases in which the same `r multi_clients` client have  two or more different records within the same site with different meta data. To resolve this discrepancy, we will take the first observation.
 
 ```{r}
-#| label: clients_dups
+#| label: clients_remove
 
-master_clientlist %>% 
-  group_by(id2) %>% 
-  filter(n() > 1)
-```
-
-For simplicity, let's just take the first record in the dataset.
-
-```{r}
-#| label: clients_dups_remove
-
-master_clientlist <- master_clientlist %>% 
-  group_by(id2) %>%
-  filter(row_number() == 1) %>% 
+clientlist <- clientlist %>% 
+  group_by(id, mfl_code) %>% 
+  tidylog::filter(row_number() == 1) %>% 
   ungroup()
+           
 ```
 
-Lastly, for this analysis, we want to know when clients age out of the pediatric program (15 years of age). We need to create this variable from clients birthday (`dob`).
+Another data issue we noticed is that `r filter(clientlist, dob > date_art_init) %>% nrow()` clients had ART initiation dates (`date_art_init`) before they were born (`dob`). We will exclude those clients from our master list.
+
+```{r}
+#| label: clients_wrong_init
+
+clientlist <- clientlist %>% 
+  tidylog::filter(dob <= date_art_init)
+
+```
+
+Lastly, for this analysis, we want to know when clients age out of the pediatric program (after they turn 15 years old). We need to create this variable based on the client's birthday (`dob`).
 
 ```{r}
 #| label: clients_ageout
 
-  #Identify point of aging out
-    master_clientlist <- master_clientlist %>% 
+    master_clientlist <- clientlist %>% 
       mutate(date_age_out = dob %m+% years(15))
 
   glimpse(master_clientlist)
 ```
+So at the end of the day, we have `r nrow(master_clientlist) %>%  comma()` unique client x facilitie pairs.
 
 ```{r}
 #| label: clients_export
@@ -130,10 +195,11 @@ Lastly, for this analysis, we want to know when clients age out of the pediatric
 write_csv(master_clientlist, "Dataout/master_clientlist.csv", na = "")
 ```
 
-Before moving to the next step, we can quickly see how many patients have been aging out vs entering each year for the past few years (excluding FY23 since we only have one quarter of data)
+Before moving to the next step, we can quickly explore how many pediatric have been aging out (`date_age_out`) versus entering (`date_art_init`) each year for the past few years (excluding FY23 since we only have one quarter of data). This review is simply exploratory using the client master list data, and doesn't include LTFU.
 
 ```{r}
 #| label: clients_explore
+#| echo: false
 
 master_clientlist %>% 
       mutate(date_art_init_fy = date_art_init %>% 
@@ -160,28 +226,10 @@ master_clientlist %>%
 
 ## Munging: Visit Log
 
-We have the relational master client list and now it's time to munge the visit log. We will start the same way but importing the data, renaming variables, and replicating the `id2` we have from the master client list so we can relate these two tables later on.
+We have the relational master client list and now it's time to munge the visit log. We need to truncate the `id` like we did in the master client list so we can relate these two tables later on.
 
 ```{r}
-#| label: visits_import
-#| cache: true
-
-  visits_data <- read_csv("Data/Appointments.csv", 
-                          na = c("", "NA", "NULL"),
-                          col_types = list(.default = "c"))
- #Renaming the variables
-    visits_data <- visits_data %>% 
-      rename(im=`Implementing Partner`, 
-             facility=`Facility Name`, 
-             mfl_code=`Facility MFL Code`,
-             id=`Client Number(De-identified)`, 
-             appoint_date=`Appointment Date`, 
-             visit_date=`Actual Visit Date`) 
-  
-  #create id2 to map onto master list
-    visits_data <- visits_data %>% 
-      mutate(id =  str_sub(id, -8)) %>% 
-      unite(id2, c(mfl_code, id))
+#| label: visits_clean
     
   #clean up date
     visits_data <- visits_data %>% 
@@ -189,11 +237,33 @@ We have the relational master client list and now it's time to munge the visit l
     
   #reorder columns for ease of review
     visits_data <- visits_data %>% 
-      relocate(id2, facility, .before = 1) %>% 
+      relocate(id, facility, .before = 1) %>% 
       relocate(visit_date, .before = appoint_date)
     
   glimpse(visits_data)
 ```
+
+```{r}
+#| label: visits_todrop
+#| echo: false
+
+ndrop <- visits_data %>% 
+  tidylog::anti_join(master_clientlist,
+                     by = c("id", "facility", "mfl_code")) %>% 
+  nrow() %>% 
+  comma()
+```
+
+We want to restrict the dataset to only clients who appear in the master client list (and merge the client meta data onto the visit list), which means dropping `r ndrop` records that exist in the `visits_data` but not `master_clientlist`, i.e. clients have aged out.
+
+```{r}
+#| label: visits_semijoin
+visits_data <- visits_data %>% 
+  tidylog::semi_join(master_clientlist,
+                     by = c("id", "facility", "mfl_code"))
+
+```
+
 
 ```{r}
 #| label: visits_date_missing
@@ -203,7 +273,7 @@ df_appt_placeholder <- visits_data %>%
   filter(appoint_date == "1900-01-01") 
 
 df_appt_past <- visits_data %>% 
-  filter(appoint_date < visit_date)
+  filter(appoint_date <= visit_date)
 
 v_appt_null <- visits_data %>% 
   filter(is.na(appoint_date)) %>% 
@@ -211,17 +281,18 @@ v_appt_null <- visits_data %>%
   comma()
 ```
 
-If you review the data, you'll find some problems with appointment dates. One example is we can see appointments in there stored under `1900-01-01` possibly a way of coding missing data. There are `r nrow(df_appt_placeholder) |> comma()` records with this placeholder date (across `r unique(df_appt_placeholder$id2) |> length() |> comma()` clients). We can also see a data entry problem with appointments if we look at the date compared with the visit date. The appointment dates should be in the future to identify the next visit date. There are, however, `r nrow(df_appt_past) |> comma()` observations for `r unique(df_appt_past$id2) |> length() |> comma()` clients, where the appoint predates the visit. Additionally, `r v_appt_null` records have no appointment data. For those clients no correct or missing appoint dates, we have decided to drop these observations.
+If you review the data, you'll find some problems with appointment dates. One example is we can see appointments in there stored under `1900-01-01` possibly a way of coding missing data. There are `r nrow(df_appt_placeholder) |> comma()` records with this placeholder date (across `r unique(df_appt_placeholder$id) |> length() |> comma()` clients). We can also see a data entry problem with appointments if we look at the date compared with the visit date. The appointment dates should be in the future to identify the next visit date. There are, however, `r nrow(df_appt_past) |> comma()` observations for `r unique(df_appt_past$id) |> length() |> comma()` clients, where the appoint predates the visit. Additionally, `r v_appt_null` records have no appointment data. For those clients no correct or missing appoint dates, we have decided to drop these observations.
 
 ```{r}
 #| label:  visits_problems
   #remove any visits that don't have a future appointment or an invalid date
  visits_data <-  visits_data %>%  
       tidylog::filter(!is.na(appoint_date), 
+                      appoint_date > visit_date,
                       appoint_date != "1900-01-01")
 ```
 
-Much like for the master list, we need to remove any duplicative records.
+There are also a number of duplicative records, which we will want to remove.
 
 ```{r}
 #| label: visit_dups
@@ -241,7 +312,7 @@ The visit observations occur between `r min_visit` and `r max_visit`.
 
 ## Join Master Client List to Visit Log
 
-Now that we have clean data from both the client list and the vist log, we want to join these two relational tables (based on `id2` and `facility`). Combining these data allow us to do two things further on: first to allow us to exclude any observations after the client is 15; and second, to include the ART initiation date to capture "TX_NEW".
+Now that we have clean data from both the client list and the vist log, we want to join these two relational tables (based on `id` and `facility`). Combining these data allow us to do two things further on: first to allow us to exclude any observations **after the client is 15 years old**; and second, to include the ART initiation date to capture "TX_NEW".
 
 ```{r}
 #| label: join
@@ -249,11 +320,11 @@ Now that we have clean data from both the client list and the vist log, we want 
   #merge on age data (for filtering)
     merged_visits_data <- clean_visits_data %>% 
       tidylog::left_join(master_clientlist,
-                by = c("id2", "facility"))
+                         by = c("id", "facility", "mfl_code"))
     
   #relocate patient data closer to id
     merged_visits_data <- merged_visits_data %>% 
-      relocate(sex:date_age_out, .after = id2)
+      relocate(sex:date_age_out, .after = id)
     
     glimpse(merged_visits_data)
 
@@ -265,7 +336,7 @@ For the analysis, we need to have distinct rows for each date a status occurs. T
 
 ### Status - Active
 
-In order to calculate a client's status (active or lost to follow up, LTFU), we would ideally have the ART dispensing data to know how long before the patients needs to return for more treatment. Without these data, we can create a proxy by using the length between visits, assuming their Rx is for this duration.
+In order to calculate a client's status (active or lost to follow up, LTFU), we would ideally have the ART dispensing data to know how long before the client needs to return for more treatment. Without these data, we can create a proxy by using the length between visits, assuming their Rx is for this duration.
 
 Let's start by including the next actual visit date onto the same line as the current visit.
 
@@ -274,15 +345,15 @@ Let's start by including the next actual visit date onto the same line as the cu
 
   #add in the next actual visit date for calculating duration between appointments
     merged_visits_data <- merged_visits_data %>% 
-      arrange(id2, visit_date) %>% 
+      arrange(id, visit_date) %>% 
       mutate(next_visit_date = lead(visit_date, order_by = visit_date),
-             .by = id2)
+             .by = id)
 
   glimpse(merged_visits_data)
 
 ```
 
-Next, we can calculate the duration between actual visits. Based on the definition we were provided, a patient would only be counted as lost 28 days after the planned gap.
+Next, we can calculate the duration between actual visits. Based on PEPFAR's guidance, a patient would only be counted as lost 28 days after the planned gap (after missign theier scheduled appointment).
 
 ```{r}
 #| label: act_duration
@@ -296,11 +367,11 @@ Next, we can calculate the duration between actual visits. Based on the definiti
   glimpse(merged_visits_data)
 ```
 
-Since this analysis is retrospective, in addition to knowing if a patient is lost, we know whether the patients has returned to treatment. We can calculat the following based on their visit gaps and if they have a future appointment.
+Since this analysis is retrospective, in addition to knowing if a client is lost, we know whether the client has returned to treatment. We can calculate the following based on their visit gaps and if they have a future appointment.
 
-Count a client as LTFU if (a) there is no future visit date (`next_visit-date`); or (b) the duration between visits exceeds (`visit_gap_actual`) the allowable visit gap (`visit_gap_allowed`); and (c) not if the client scheduled to return after we have actual visit data for in the dataset (`max_visit`)
+**LTFU Logic**: Count a client as LTFU if (a) there is no future visit date (`next_visit-date`); or (b) the duration between visits exceeds (`visit_gap_actual`) the allowable visit gap (`visit_gap_allowed`); and (c) not if the client scheduled to return after we have actual visit data for in the dataset (`max_visit`)
 
-Count a client as returned to treatment (RTT) if (a) they were originally LTFU; and (b) they have an actual next visit date (`next_visit_date`)
+**IIT/RTT Logic**: Count a client as interrupted and returned to treatment (RTT) if (a) they were originally LTFU; and (b) they have an actual next visit date (`next_visit_date`)
 
 ```{r}
 #| label: act_status
@@ -318,7 +389,17 @@ Count a client as returned to treatment (RTT) if (a) they were originally LTFU; 
 
 ```
 
-At this stage, we will count all the patients as "Active" in the dataset. The patients will only become LTFU a in the future after the `visit_gap_allowed` and will need to be added in as a separate row.
+We do also want to remove any instances in the data where new initations are occurring after a patient has been to one or more visits. We will filter out any visits that occur before the `data_art_init`.
+
+```{r}
+#| label: act_init_lim
+
+merged_visits_data <- merged_visits_data %>% 
+  tidylog::filter(visit_date >= date_art_init)
+```
+
+
+At this stage, we will count all the patients as "Active" in the dataset. The patients will only become LTFU in the future after the `visit_gap_allowed` and will need to be added in as a separate row.
 
 ```{r}
 #| label: act_df
@@ -339,8 +420,8 @@ An important part of this analysis is tracking patients until they age out, i.e.
 
   #add ageout date as a distinct record/row
     date_ageout <- master_clientlist %>% 
-      tidylog::filter(date_age_out <= max_visit) %>% 
-      tidylog::filter(id2 %in% clean_visits_data$id2) %>% 
+      filter(between(date_age_out, min_visit, max_visit)) %>% 
+      filter(id %in% clean_visits_data$id) %>% 
       mutate(date = date_age_out,
              status = "Aged Out") 
 
@@ -370,9 +451,9 @@ In the earlier section, we calculated when patients were active versus LTFU/ITT,
 
 ### Status - New
 
-From the master client list, we can use the ART initiation date (`date_art_init`) to approximate TX_NEW from MER data.
+From the master client list, we can use the ART initiation date (`date_art_init`) to approximate TX_NEW as per PEPFAR MER guidance.
 
-It's important to note a few things: - The initiations are separate from a separate source than the visit data - Active status **should** be inclusive of new initiations (like TX_CURR and TX_NEW) and the two are not additive - Some patients have initiation dates after one or many visits.
+It's important to note a few things: (a) The initiations are separate from a separate source than the visit data; (b) if a client is initiated, they should also have a active status (i.e. have visits data), though this isn't always true in the data; (c) active status **should** be inclusive of new initiations (similar to MER where TX_CURR includes TX_NEW); and (d) some patients in data had initiation dates after one or many visits and these were removed in an earlier step.
 
 ```{r}
 #| label: new_df
@@ -390,7 +471,7 @@ It's important to note a few things: - The initiations are separate from a separ
              status = "New",
              date = date_art_init) %>%
       tidylog::filter(date_age_out > date_art_init) %>% 
-      tidylog::filter(id2 %in% clean_visits_data$id2) %>% 
+      tidylog::filter(id %in% clean_visits_data$id) %>% 
       tidylog::filter(between(date_art_init, min_visit, max_visit))
 
   glimpse(status_new)
@@ -407,7 +488,7 @@ We have now have three separate data frames by status that need to be combined b
   #bind date of ltfu date + age out date back onto dataset
     appended_visits_data <- merged_visits_data %>% 
       bind_rows(date_ltfu, date_ageout) %>% 
-      arrange(id2, date)
+      arrange(id, date)
 
   #remove patients after 15+ years old
     appended_visits_data <- appended_visits_data %>% 
@@ -415,7 +496,7 @@ We have now have three separate data frames by status that need to be combined b
   
   #remove patients where only observation is aging out
     appended_visits_data <- appended_visits_data %>% 
-      group_by(id2) %>% 
+      group_by(id) %>% 
       tidylog::filter(!(status == "Aged Out" & n() == 1)) %>% 
       ungroup()
     
@@ -443,7 +524,7 @@ At this point, we have combined all the status data together expect for new init
   #arrange by status (Active to come after LTFU in event they occur on the same day)
     status_data <- appended_visits_data %>% 
       mutate(status = factor(status, c("LTFU", "IIT", "Active", "Aged Out"))) %>% 
-      arrange(id2, date, status)
+      arrange(id, date, status)
     
     glimpse(status_data)
 ```
@@ -456,13 +537,13 @@ With the fiscal periods included, we can now
   #filter by the last observed status per period to capture the status
     status_data_qtr <- status_data %>% 
       filter(row_number() == max(row_number()), 
-             .by = c(id2, period))
+             .by = c(id, period))
 
   #bind on new initations
     status_data_qtr <- status_data_qtr %>% 
       mutate(status = as.character(status)) %>% 
       bind_rows(status_new) %>%
-      arrange(id2, date)
+      arrange(id, date)
     
     glimpse(status_data_qtr)
 ```
@@ -477,13 +558,13 @@ We can repeat this as well to calculate each client's status at the end of the f
     #filter by the last observed status per period to capture the status
     status_data_fy <- status_data %>% 
       filter(row_number() == max(row_number()),
-             .by = c(id2, fiscal_year))
+             .by = c(id, fiscal_year))
     
     #bind on new initations
     status_data_fy <- status_data_fy %>% 
       mutate(status = as.character(status)) %>% 
       bind_rows(status_new) %>%
-      arrange(id2, date)
+      arrange(id, date)
     
     glimpse(status_data_fy)
 ```
@@ -545,10 +626,10 @@ We'll need to start with the fiscal year status data (`status_data_fy`) and aggr
 
   viz_collapsed <- status_data_fy %>% 
     mutate(status = fct_relevel(status, "New", after = Inf)) %>% 
-    arrange(id2, fiscal_year, status) %>% 
+    arrange(id, fiscal_year, status) %>% 
     mutate(status = as.character(status)) %>%
     summarise(status_start_yr = paste0(status, collapse = " - "),
-              .by = c(id2, fiscal_year))
+              .by = c(id, fiscal_year))
 
   glimpse(viz_collapsed)
 ```
@@ -559,9 +640,9 @@ To make sure each patients exists each year and then pull the status forward of 
 #| label: viz_next
   #expand each patient row to have every year and then pull the future year's status
   viz_collapsed <- viz_collapsed %>% 
-    complete(fiscal_year, nesting(id2)) %>% 
+    complete(fiscal_year, nesting(id)) %>% 
     mutate(status_end_yr = lead(status_start_yr, n = 1, order_by = fiscal_year),
-           .by = id2) 
+           .by = id) 
   
   glimpse(viz_collapsed)
 ```
@@ -576,7 +657,7 @@ For each year, we want the start year to only start with TX_CURR as the base (an
     mutate(status_start_yr = 
              ifelse(str_detect(status_start_yr, "(LTFU|Aged Out)"), 
                     NA_character_, status_start_yr),
-           status_start_yr = str_remove(status_start_yr, " - New")) %>% 
+           status_start_yr = str_remove_all(status_start_yr, " - New")) %>% 
     filter(!(is.na(status_start_yr) & is.na(status_end_yr)))
 
  #move new to start for placement on plot (will move manually to mid point)
@@ -584,7 +665,7 @@ For each year, we want the start year to only start with TX_CURR as the base (an
     mutate(status_start_yr = 
              ifelse(is.na(status_start_yr) & str_detect(status_end_yr, "New"),
                     "New", status_start_yr),
-           status_end_yr = str_remove(status_end_yr, " - New"))
+           status_end_yr = str_remove_all(status_end_yr, " - New"))
   
   glimpse(viz_collapsed)
 ```

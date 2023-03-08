@@ -248,7 +248,7 @@ We have the relational master client list and now it's time to munge the visit l
 #| echo: false
 
 ndrop <- visits_data %>% 
-  tidylog::anti_join(master_clientlist,
+  anti_join(master_clientlist,
                      by = c("id", "facility", "mfl_code")) %>% 
   nrow() %>% 
   comma()

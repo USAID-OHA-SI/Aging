@@ -401,8 +401,17 @@ merged_visits_data <- merged_visits_data %>%
   tidylog::filter(visit_date >= date_art_init)
 ```
 
+And, for this active client list, we want to remove any record after the client has turned 15 years old.
 
-At this stage, we will count all the patients as "Active" in the dataset. The patients will only become LTFU in the future after the `visit_gap_allowed` and will need to be added in as a separate row.
+```{r}
+#| label: act_age_lim
+
+merged_visits_data <- merged_visits_data %>% 
+  tidylog::filter(agedout == FALSE)
+```
+
+
+At this stage, we can now count all the patients as "Active" in the dataset. The patients will only become LTFU in the future after the `visit_gap_allowed` and will need to be added in as a separate row.
 
 ```{r}
 #| label: act_df

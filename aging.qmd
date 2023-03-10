@@ -373,6 +373,8 @@ Since this analysis is retrospective, in addition to knowing if a client is lost
 
 **IIT/RTT Logic**: Count a client as interrupted and returned to treatment (RTT) if (a) they were originally LTFU; and (b) they have an actual next visit date (`next_visit_date`)
 
+**Aged Out Logic**: Count a client if the visit is after they turn 15 years old (`date_age_out`)
+
 ```{r}
 #| label: act_status
 
@@ -383,7 +385,8 @@ Since this analysis is retrospective, in addition to knowing if a client is lost
                               visit_gap_actual > visit_gap_allowed ~ TRUE, #B 
                               TRUE ~ FALSE),
              rtt = case_when(ltfu == TRUE & is.na(next_visit_date) ~ FALSE, # A+B
-                             ltfu & !is.na(next_visit_date) ~ TRUE))
+                             ltfu & !is.na(next_visit_date) ~ TRUE),
+             agedout = visit_date > date_age_out)
 
   glimpse(merged_visits_data)
 

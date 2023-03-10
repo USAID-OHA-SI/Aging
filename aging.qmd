@@ -657,11 +657,39 @@ To make sure each patients exists each year and then pull the status forward of 
 
 ```{r}
 #| label: viz_next
-  #expand each patient row to have every year and then pull the future year's status
-  viz_collapsed <- viz_collapsed %>% 
-    complete(fiscal_year, nesting(id)) %>% 
-    mutate(status_end_yr = lead(status_start_yr, n = 1, order_by = fiscal_year),
-           .by = id) 
+
+#identify the min and max reporting year for each client (so we can remove exta values created in complete)
+viz_collapsed <- viz_collapsed %>% 
+  mutate(min_fy = min(fiscal_year),
+         max_fy = max(fiscal_year),
+         .by = id)
+
+#expand each patient row to have every year 
+viz_collapsed <- viz_collapsed %>% 
+  complete(fiscal_year, nesting(id)) %>% 
+  arrange(id, fiscal_year) %>% 
+  mutate(filled = case_when(is.na(status_start_yr) ~ TRUE))
+
+#fill missing years with status (should just be IIT)
+viz_collapsed <- viz_collapsed %>% 
+  group_by(id) %>% 
+  fill(ends_with("fy"), .direction = "downup") %>% 
+  filter(between(fiscal_year, min_fy, max_fy)) %>% 
+  fill(status_start_yr, .direction = "down") %>% 
+  ungroup() %>% 
+  select(-ends_with("fy"))
+
+#remove New from filled values ()
+viz_collapsed <- viz_collapsed %>% 
+  # tidylog::mutate(status_start_yr = case_when(filled == TRUE & status_start_yr == "New" ~ NA_character_,
+  #                                             filled == TRUE & str_detect(status_start_yr, " - New") ~ str_remove(status_start_yr, " - New"),
+  #                                             TRUE ~ status_start_yr)) %>% 
+  select(-filled)
+
+#pull the future year's status
+viz_collapsed <- viz_collapsed %>% 
+  mutate(status_end_yr = lead(status_start_yr, n = 1, order_by = fiscal_year),
+         .by = id) 
   
   glimpse(viz_collapsed)
 ```
@@ -671,7 +699,7 @@ For each year, we want the start year to only start with TX_CURR as the base (an
 ```{r}
 #| label: viz_years
 
-  #removed LTFU from base year and get rid of "New" status from base year
+  #removed LTFU from base year and get rid of "New" status from base year (captured from end year)
   viz_collapsed <- viz_collapsed %>% 
     mutate(status_start_yr = 
              ifelse(str_detect(status_start_yr, "(LTFU|Aged Out)"), 

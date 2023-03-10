@@ -19,6 +19,7 @@ Before we import the data, we first will want to load the packages we'll be usin
 #| label: dependencies 
 # library(tidylog, warn.conflicts = FALSE) #explicitly referenced for detailing filtering/merging results
 library(tidyverse)
+library(lubridate)
 library(scales, warn.conflicts = FALSE)
 ```
 
@@ -346,7 +347,7 @@ Let's start by including the next actual visit date onto the same line as the cu
   #add in the next actual visit date for calculating duration between appointments
     merged_visits_data <- merged_visits_data %>% 
       arrange(id, visit_date) %>% 
-      mutate(next_visit_date = lead(visit_date, order_by = visit_date),
+      mutate(next_visit_date = lead(visit_date, order_by = id),
              .by = id)
 
   glimpse(merged_visits_data)

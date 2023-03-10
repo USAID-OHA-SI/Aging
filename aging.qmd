@@ -750,7 +750,7 @@ Now are data are ready to be exported for us in aggregate level Sankey flow diag
 #| label: viz_export
 #| eval: false
 
-  walk(2019:2022,
+  walk(2019:2021,
        ~ viz_out %>% 
          filter(fiscal_year == .x) %>% 
          write_csv(paste0("Dataout/aging-viz_fy", .x, ".csv"), na = "")
@@ -758,4 +758,3 @@ Now are data are ready to be exported for us in aggregate level Sankey flow diag
 
 ```
 
-From here, the data can be used in RawGraphs to create a Sankey plot. In RawGraphs, 1. load data (not saved by site) 2. Choose a chart: Alluvial Diagram 3. Mapping: Steps = status_start_year, status_end_year; Size = patients 4. Customize: width = 1280 height = 720 padding = 20 Links opacity = .8 5. Export: svg and cleaned up in Adobe Illustrator (this can also be done in PowerPoint)

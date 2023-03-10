@@ -758,3 +758,4 @@ Now are data are ready to be exported for us in aggregate level Sankey flow diag
 
 ```
 
+From here, the data can be used in RawGraphs to create a Sankey plot. In RawGraphs, 1. load data (not saved by site) 2. Choose a chart: Alluvial Diagram 3. Mapping: Steps = status_start_year, status_end_year; Size = patients 4. Customize: width = 1280 height = 770 margin (top) = 75 margin (right) = 100 margin (bottom) = 45 margin (left) = 100 padding = 20 Links opacity = .8 Flows alignment = top 5. Export: svg and cleaned up in Adobe Illustrator (this can also be done in PowerPoint)

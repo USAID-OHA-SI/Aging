@@ -433,7 +433,10 @@ An important part of this analysis is tracking patients until they age out, i.e.
   #add ageout date as a distinct record/row
     date_ageout <- master_clientlist %>% 
       filter(between(date_age_out, min_visit, max_visit)) %>% 
-      filter(id %in% clean_visits_data$id) %>% 
+      filter(id %in% unique(merged_visits_data$id)) %>% 
+      group_by(id) %>% 
+      filter(row_number() == 1) %>% 
+      ungroup() %>% 
       mutate(date = date_age_out,
              status = "Aged Out") 
 

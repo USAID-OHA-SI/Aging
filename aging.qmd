@@ -468,26 +468,29 @@ In the earlier section, we calculated when patients were active versus LTFU/ITT,
 
 From the master client list, we can use the ART initiation date (`date_art_init`) to approximate TX_NEW as per PEPFAR MER guidance.
 
-It's important to note a few things: (a) The initiations are separate from a separate source than the visit data; (b) if a client is initiated, they should also have a active status (i.e. have visits data), though this isn't always true in the data; (c) active status **should** be inclusive of new initiations (similar to MER where TX_CURR includes TX_NEW); and (d) some patients in data had initiation dates after one or many visits and these were removed in an earlier step.
+It's important to note a few things: (a) The initiations are separate from a separate source than the visit data; (b) if a client is initiated, they should also have a active status (i.e. have visits data), though this isn't always true in the data; (c) active status **should** be inclusive of new initiations (similar to MER where TX_CURR includes TX_NEW); (d) some patients in data had initiation dates after one or many visits and these were removed in an earlier step; and (e) when a patient move to various clinics, their initiation date is repleted so we need to only keep on observation of the inititation date.
 
 ```{r}
 #| label: new_df
 
 #include new initiation (between bounds of visit dataset and excluded 15+)
-    status_new <- master_clientlist %>% 
-      mutate(period = date_art_init %>% 
-               quarter(with_year = TRUE, fiscal_start = 10) %>%
-               str_replace("20", "FY") %>% 
-               str_replace("\\.", "Q"),
-             fiscal_year = period %>% 
-               str_sub(3,4) %>% 
-               paste0(20, .) %>% 
-               as.integer(),
-             status = "New",
-             date = date_art_init) %>%
-      tidylog::filter(date_age_out > date_art_init) %>% 
-      tidylog::filter(id %in% clean_visits_data$id) %>% 
-      tidylog::filter(between(date_art_init, min_visit, max_visit))
+status_new <- master_clientlist %>% 
+  mutate(period = date_art_init %>% 
+           quarter(with_year = TRUE, fiscal_start = 10) %>%
+           str_replace("20", "FY") %>% 
+           str_replace("\\.", "Q"),
+         fiscal_year = period %>% 
+           str_sub(3,4) %>% 
+           paste0(20, .) %>% 
+           as.integer(),
+         status = "New",
+         date = date_art_init) %>%
+  tidylog::filter(date_age_out > date_art_init) %>% 
+  tidylog::filter(id %in% merged_visits_data$id) %>% 
+  tidylog::filter(between(date_art_init, min_visit, max_visit)) %>% 
+  group_by(id) %>% 
+  tidylog::filter(row_number() == 1) %>% 
+  ungroup()
 
   glimpse(status_new)
 
@@ -495,7 +498,7 @@ It's important to note a few things: (a) The initiations are separate from a sep
 
 ## Appended Status Data
 
-We have now have three separate data frames by status that need to be combined back together: Active, Aged Out, and LTFU/IIT. Once we bind these together, we need to remove any observations for clients who have aged out (+15). We also need to remove any patients who didn't have any data in the visits log, but were created by binding on the age out date.
+We have now have three separate data frames by status that need to be combined back together: Active, Aged Out, and LTFU/IIT. Once we bind these together, we need to remove any patients who didn't have any data in the visits log, but were created by binding on the age out date.
 
 ```{r}
 #| label: appended_df
@@ -504,10 +507,6 @@ We have now have three separate data frames by status that need to be combined b
     appended_visits_data <- merged_visits_data %>% 
       bind_rows(date_ltfu, date_ageout) %>% 
       arrange(id, date)
-
-  #remove patients after 15+ years old
-    appended_visits_data <- appended_visits_data %>% 
-      tidylog::filter(date <= date_age_out)
   
   #remove patients where only observation is aging out
     appended_visits_data <- appended_visits_data %>% 
@@ -515,7 +514,12 @@ We have now have three separate data frames by status that need to be combined b
       tidylog::filter(!(status == "Aged Out" & n() == 1)) %>% 
       ungroup()
     
-    glimpse(appended_visits_data)
+  #remove age out observation when the patient is already LTFU
+    appended_visits_data <- appended_visits_data %>% 
+      group_by(id) %>% 
+      tidylog::filter(!(status == "Aged Out" & lag(status) == "LTFU")) %>%
+      ungroup()
+   
 ```
 
 ### Quarter Status

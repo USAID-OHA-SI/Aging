@@ -1,14 +1,14 @@
 ---
 title: "Tracking Pediatric LTFU + Aging Out | Kenya"
 author: "Aaron Chafetz, Nelly Maina, and Lydia Odero"
-date: `r format(Sys.Date(), "%B %d, %Y")`
+date: "`r format(Sys.Date(), '%B %d, %Y') |> as.character()`"
 format: docx
 editor: source
 ---
 
 ## Background
 
-Continuity on treatment (CoT) is vital for viral suppression of clients on treatment. CoT estimates among C/ALHIV are lower than adults. Aging-up may distort proxy CoT estimates. There is a need to take a deep-dive into the outcomes of CALHIV on treatment through individual level data to quantify the proportion accounted for by aging-up. The data used here come from the Kenya National Data Warehouse (NDW). Underlying code can be found on [GitHub](https://github.com/USAID-OHA-SI/Aging).
+Continuity on treatment (CoT) is vital for viral suppression of clients on treatment. CoT estimates among C/ALHIV are lower than adults. Aging-up may distort proxy CoT estimates. There is a need to take a deep-dive into the outcomes of CALHIV on treatment through individual level data to quantify the proportion accounted for by aging-up. The data used here come from the Kenya National Data Warehouse (NDW). Underlying code can be found on [GitHub](https://github.com/USAID-OHA-SI/Aging) and other inputs/outputs can be found on [Google Drive](https://drive.google.com/drive/folders/1NN5thuBKt7aW6k7rQO5YSoRDKemEMYMV)
 
 ## Setup
 
@@ -760,4 +760,24 @@ Now are data are ready to be exported for us in aggregate level Sankey flow diag
 ```
 
 From here, the data can be used in RawGraphs to create a Sankey plot. In RawGraphs, 1. load data (not saved by site) 2. Choose a chart: Alluvial Diagram 3. Mapping: Steps = status_start_year, status_end_year; Size = patients 4. Customize: width = 1280 height = 770 margin (top) = 75 margin (right) = 100 margin (bottom) = 45 margin (left) = 100 padding = 20 Links opacity = .8 Flows alignment = top 5. Export: svg and cleaned up in Adobe Illustrator (this can also be done in PowerPoint)
+
+```{r}
+#| label: uploads
+#| eval: false
+#| echo: false
+
+#doc upload
+googledrive::drive_upload("aging.docx",
+             path = googledrive::as_id("14feQ6uBn8VxQT31mQmzPYgmTJqUCthbd"),
+             name = "Aging Up Code Review and Writeup",
+             type = "document",
+             overwrite = TRUE)
+
+#upload data outputs
+list.files("Dataout", full.names = TRUE) %>% 
+  walk(~drive_upload(.x,
+                     path = googledrive::as_id("1WPkwtd2BUpfAURm0QnriPUMCQOymLDJe"),
+                     overwrite = TRUE))
+       
+```
 

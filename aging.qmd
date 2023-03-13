@@ -74,7 +74,7 @@ visits_data <- visits_data %>%
 glimpse(visits_data)
 ```
 
-For simplicity, we will truncate number of characters in the id, making it easier to review, but still keeping it unique.
+For simplicity, we will truncate the number of characters in the id, making it easier to review, but still keeping it unique.
 
 ```{r}
 #| label: ids
@@ -118,24 +118,26 @@ Within the master client list there are `r unique(clientlist$id) |> length() |> 
 #identify the latest visit/current facility for a client
   curr_facility <- visits_data %>%
     mutate(visit_date = dmy(visit_date)) %>% 
-    group_by(id) %>% 
-    filter(visit_date == max(visit_date)) %>% 
-    ungroup() %>% 
+    filter(visit_date == max(visit_date),
+           .by = id) %>% 
     distinct(id, mfl_code) %>% 
     mutate(current_facility = TRUE)
 
 #ensure full list of ids after filtering
   length(unique(visits_data$id)) == length(unique(curr_facility$id))
 
-#limit dataset to only key variables, remove other meta data info at earlier facilities and replace with current
+#limit dataset to only key variables and join w/ current facility list
 clientlist <- clientlist %>%
   select(id, mfl_code, sex, dob, facility, county, date_art_init, reg_art_current) %>% 
-  group_by(id) %>% 
-  mutate(n = n()) %>% 
-  ungroup() %>% 
-  tidylog::left_join(curr_facility, by = c("id", "mfl_code")) %>% 
+  mutate(n = n(),
+         .by = id) %>% 
+  tidylog::left_join(curr_facility, by = c("id", "mfl_code"))
+
+#retain meta data info at earlier facilities and replace with current
+clientlist <- clientlist %>%
   mutate(current_facility = ifelse(is.na(current_facility), FALSE, current_facility),
-         across(c(sex, dob, date_art_init, reg_art_current), \(x) case_when(current_facility | n == 1 ~ x))) %>% 
+         across(c(sex, dob, date_art_init, reg_art_current), 
+                \(x) case_when(current_facility | n == 1 ~ x))) %>% 
   group_by(id) %>% 
   fill(c(sex, dob, date_art_init, reg_art_current), .direction = "updown") %>% 
   ungroup() %>% 
@@ -146,16 +148,15 @@ clientlist <- clientlist %>%
 #| label: client_fac_dups
 #| echo: false
 multi_vals <- clientlist %>% 
-  group_by(id, mfl_code) %>% 
-  filter(n() > 1) %>% 
-  ungroup() 
+  filter(n() > 1,
+         by = c(id, mfl_code))
 
 multi_clients <- multi_vals %>% 
   distinct(id) %>% 
   nrow()
 ```
 
-If we review this client dataset, we notice that there are a `r nrow(multi_vals) ` cases in which the same `r multi_clients` client have  two or more different records within the same site with different meta data. To resolve this discrepancy, we will take the first observation.
+If we review this client dataset, we notice that there are `r nrow(multi_vals) ` cases in which the same `r multi_clients` clients have  two or more different records within the same site with different metadata. To resolve this discrepancy, we will take the first observation.
 
 ```{r}
 #| label: clients_remove
@@ -187,7 +188,7 @@ Lastly, for this analysis, we want to know when clients age out of the pediatric
 
   glimpse(master_clientlist)
 ```
-So at the end of the day, we have `r nrow(master_clientlist) %>%  comma()` unique client x facility pairs.
+So at the end of the day, we have `r unique(master_clientlist$id) %>% length() %>%  comma()` unique clients and `r nrow(master_clientlist) %>%  comma()` unique client x facility pairs.
 
 ```{r}
 #| label: clients_export
@@ -196,7 +197,7 @@ So at the end of the day, we have `r nrow(master_clientlist) %>%  comma()` uniqu
 write_csv(master_clientlist, "Dataout/master_clientlist.csv", na = "")
 ```
 
-Before moving to the next step, we can quickly explore how many pediatric have been aging out (`date_age_out`) versus newly entering (`date_art_init`) each year for the past few years (excluding FY23 since we only have one quarter of data). This review is simply exploratory using the client master list data, and doesn't include LTFU.
+Before moving to the next step, we can quickly explore how many pediatric clients have been aging out (`date_age_out`) versus newly entering (`date_art_init`) each year for the past few years (excluding FY23 since we only have one quarter of data). This review is simply exploratory using the client master list data, and doesn't include LTFU.
 
 ```{r}
 #| label: clients_explore
@@ -282,7 +283,7 @@ v_appt_null <- visits_data %>%
   comma()
 ```
 
-If you review the data, you'll find some problems with appointment dates. One example is we can see appointments in there stored under `1900-01-01` possibly a way of coding missing data. There are `r nrow(df_appt_placeholder) |> comma()` records with this placeholder date (across `r unique(df_appt_placeholder$id) |> length() |> comma()` clients). We can also see a data entry problem with appointments if we look at the date compared with the visit date. The appointment dates should be in the future to identify the next visit date. There are, however, `r nrow(df_appt_past) |> comma()` observations for `r unique(df_appt_past$id) |> length() |> comma()` clients, where the appoint predates the visit. Additionally, `r v_appt_null` records have no appointment data. For those clients no correct or missing appoint dates, we have decided to drop these observations.
+If you review the data, you'll find some problems with appointment dates. One example is we can see appointments stored as `1900-01-01` possibly a way of coding missing data. There are `r nrow(df_appt_placeholder) |> comma()` records with this placeholder date (across `r unique(df_appt_placeholder$id) |> length() |> comma()` clients). We can also see a data entry problem with appointments if we look at the date compared with the visit date. The appointment dates should be in the future to identify the next visit date. There are, however, `r nrow(df_appt_past) |> comma()` observations for `r unique(df_appt_past$id) |> length() |> comma()` clients, where the appointment predates the visit. Additionally, `r v_appt_null` records have no appointment data. For those clients with invalid or missing appointment dates, we have decided to drop these observations.
 
 ```{r}
 #| label:  visits_problems
@@ -313,7 +314,7 @@ The visit observations occur between `r min_visit` and `r max_visit`.
 
 ## Join Master Client List to Visit Log
 
-Now that we have clean data from both the client list and the vist log, we want to join these two relational tables (based on `id` and `facility`). Combining these data allow us to do two things further on: first to allow us to exclude any observations **after the client is 15 years old**; and second, to include the ART initiation date to capture "TX_NEW".
+Now that we have clean data from both the client list and the visit log, we want to join these two relational tables (based on `id` and `facility`). Combining these data allow us to do two things further on: first to allow us to exclude any observations **after the client is 15 years old**; and second, to include the ART initiation date to capture "TX_NEW".
 
 ```{r}
 #| label: join
@@ -354,7 +355,7 @@ Let's start by including the next actual visit date onto the same line as the cu
 
 ```
 
-We will want to remove any instances in the data where new initations are occurring after a patient has been to one or more visits. We will filter out any visits that occur before the `data_art_init`.
+We will want to remove any instances in the data where new initiations are occurring after a patient has been to one or more visits. We will filter out any visits that occur before the `data_art_init`.
 
 ```{r}
 #| label: act_init_lim
@@ -464,7 +465,7 @@ In the earlier section, we calculated when patients were active versus LTFU/ITT,
 
 From the master client list, we can use the ART initiation date (`date_art_init`) to approximate TX_NEW as per PEPFAR MER guidance.
 
-It's important to note a few things: (a) The initiations are separate from a separate source than the visit data; (b) if a client is initiated, they should also have a active status (i.e. have visits data), though this isn't always true in the data; (c) active status **should** be inclusive of new initiations (similar to MER where TX_CURR includes TX_NEW); (d) some patients in data had initiation dates after one or many visits and these were removed in an earlier step; and (e) when a patient move to various clinics, their initiation date is repleted so we need to only keep on observation of the inititation date.
+It's important to note a few things: (a) The initiations are separate from a separate source than the visit data; (b) if a client is initiated, they should also have a active status (i.e. have visits data), though this isn't always true in the data; (c) active status **should** be inclusive of new initiations (similar to MER where TX_CURR includes TX_NEW); (d) some patients in data had initiation dates after one or many visits and these were removed in an earlier step; and (e) when a patient move to various clinics, their initiation date is repleted so we need to only keep on observation of the initiation date.
 
 ```{r}
 #| label: new_df
@@ -494,7 +495,7 @@ status_new <- master_clientlist %>%
 
 ## Appended Status Data
 
-We have now have three separate data frames by status that need to be combined back together: Active, Aged Out, and LTFU/IIT. Once we bind these together, we need to remove any patients who didn't have any data in the visits log, but were created by binding on the age out date.
+We now have three separate data frames by status that need to be combined back together: Active, Aged Out, and LTFU/IIT. Once we bind these together, we need to remove any patients who didn't have any data in the visits log, but were created by binding on the age out date.
 
 ```{r}
 #| label: appended_df
@@ -520,7 +521,7 @@ We have now have three separate data frames by status that need to be combined b
 
 ### Quarter Status
 
-At this point, we have combined all the status data together expect for new initiations (which are additive). We want to convert these calendar dates into status by fiscal quarter to approximate PEPFAR data, so we need to take the status of last observation for each fiscal quarter or year. First up, we need to apply the periods and fiscal year based on the status date and then arrange the status types so that Active comes after LTFU (in the event they both occur on the same day).
+At this point, we have combined all the status data together except for new initiations (which are additive). We want to convert these calendar dates into status by fiscal quarter to approximate PEPFAR data, so we need to take the status of the last observation for each fiscal quarter or year. First up, we need to apply the periods and fiscal year based on the status date and then arrange the status types so that Active comes after LTFU (in the event they both occur on the same day).
 
 ```{r}
 #| label: status_cleaning
@@ -554,7 +555,7 @@ With the fiscal periods included, we can now
       filter(row_number() == max(row_number()), 
              .by = c(id, period))
 
-  #bind on new initations
+  #bind on new initiations
     status_data_qtr <- status_data_qtr %>% 
       mutate(status = as.character(status)) %>% 
       bind_rows(status_new) %>%
@@ -575,7 +576,7 @@ We can repeat this as well to calculate each client's status at the end of the f
       filter(row_number() == max(row_number()),
              .by = c(id, fiscal_year))
     
-    #bind on new initations
+    #bind on new initiations
     status_data_fy <- status_data_fy %>% 
       mutate(status = as.character(status)) %>% 
       bind_rows(status_new) %>%
@@ -634,7 +635,7 @@ We can repeat this as well to calculate each client's status at the end of the f
 
 One of the outputs of this analysis is to understand how clients are tracking each year. To best capture the ever changing nature of the client list, we can use a Sankey Diagram to visualize each year's changing enrollment data.
 
-We'll need to start with the fiscal year status data (`status_data_fy`) and aggregate it if there are more than one row (this occurs due to appending on new initiations). We reorder New to the end so it is always last in the collapses text for our string parsing later on.
+We'll need to start with the fiscal year status data (`status_data_fy`) and aggregate it if there are more than one row (this occurs due to appending on new initiations). We reorder "New" to the end so it is always last in the collapsed text for our string parsing later on.
 
 ```{r}
 #| label: viz_agg
@@ -714,7 +715,7 @@ For each year, we want the start year to only start with TX_CURR as the base (an
   glimpse(viz_collapsed)
 ```
 
-Lastly, we want to aggregate the status categories by year and order them they way the should appear in the visualization (we will remove the numbers in post processing).
+Lastly, we want to aggregate the status categories by year and order them way they should appear in the visualization (we will remove the numbers in post processing).
 
 ```{r}
 #| label: viz_out
@@ -745,7 +746,7 @@ glimpse(viz_out)
 
 ```
 
-Now are data are ready to be exported for us in aggregate level Sankey flow diagrams.
+Now the data are ready to be exported for us in aggregate level Sankey flow diagrams.
 
 ```{r}
 #| label: viz_export
@@ -759,7 +760,7 @@ Now are data are ready to be exported for us in aggregate level Sankey flow diag
 
 ```
 
-From here, the data can be used in RawGraphs to create a Sankey plot. In RawGraphs, 1. load data (not saved by site) 2. Choose a chart: Alluvial Diagram 3. Mapping: Steps = status_start_year, status_end_year; Size = patients 4. Customize: width = 1280 height = 770 margin (top) = 75 margin (right) = 100 margin (bottom) = 45 margin (left) = 100 padding = 20 Links opacity = .8 Flows alignment = top 5. Export: svg and cleaned up in Adobe Illustrator (this can also be done in PowerPoint)
+From here, the data can be used in [RawGraphs](https://www.rawgraphs.io/) to create a Sankey plot. In RawGraphs, 1. load data (not saved by site) 2. Choose a chart: Alluvial Diagram 3. Mapping: Steps = status_start_year, status_end_year; Size = patients 4. Customize: width = 1280 height = 770 margin (top) = 75 margin (right) = 100 margin (bottom) = 45 margin (left) = 100 padding = 20 Links opacity = .8 Flows alignment = top 5. Export: svg and cleaned up in Adobe Illustrator (this can also be done in PowerPoint)
 
 ```{r}
 #| label: uploads

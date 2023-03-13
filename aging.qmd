@@ -1,6 +1,7 @@
 ---
 title: "Tracking Pediatric LTFU + Aging Out | Kenya"
 author: "Aaron Chafetz, Nelly Maina, and Lydia Odero"
+date: `r format(Sys.Date(), "%B %d, %Y")`
 format: docx
 editor: source
 ---
@@ -653,7 +654,7 @@ To make sure each patients exists each year and then pull the status forward of 
 ```{r}
 #| label: viz_next
 
-#identify the min and max reporting year for each client (so we can remove exta values created in complete)
+#identify the min and max reporting year for each client (so we can remove extra values created in complete)
 viz_collapsed <- viz_collapsed %>% 
   mutate(min_fy = min(fiscal_year),
          max_fy = max(fiscal_year),
@@ -674,11 +675,12 @@ viz_collapsed <- viz_collapsed %>%
   ungroup() %>% 
   select(-ends_with("fy"))
 
-#remove New from filled values ()
+
+#remove New from filled values
 viz_collapsed <- viz_collapsed %>% 
-  # tidylog::mutate(status_start_yr = case_when(filled == TRUE & status_start_yr == "New" ~ NA_character_,
-  #                                             filled == TRUE & str_detect(status_start_yr, " - New") ~ str_remove(status_start_yr, " - New"),
-  #                                             TRUE ~ status_start_yr)) %>% 
+  tidylog::mutate(status_start_yr = case_when(filled == TRUE & status_start_yr == "New" ~ NA_character_,
+                                              filled == TRUE & str_detect(status_start_yr, " - New") ~ str_remove(status_start_yr, " - New"),
+                                              TRUE ~ status_start_yr)) %>%
   select(-filled)
 
 #pull the future year's status
@@ -735,6 +737,10 @@ Lastly, we want to aggregate the status categories by year and order them they w
                                         .default = "5. Unclassified")
     ) 
 
+#up year to reflect out year
+viz_out <- viz_out %>% 
+  mutate(fiscal_year = fiscal_year + 1)
+
 glimpse(viz_out)
 
 ```
@@ -745,7 +751,7 @@ Now are data are ready to be exported for us in aggregate level Sankey flow diag
 #| label: viz_export
 #| eval: false
 
-  walk(2019:2021,
+  walk(2020:2022,
        ~ viz_out %>% 
          filter(fiscal_year == .x) %>% 
          write_csv(paste0("Dataout/aging-viz_fy", .x, ".csv"), na = "")

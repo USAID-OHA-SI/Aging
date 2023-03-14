@@ -676,13 +676,34 @@ viz_collapsed <- viz_collapsed %>%
   ungroup() %>% 
   select(-ends_with("fy"))
 
-
 #remove New from filled values
 viz_collapsed <- viz_collapsed %>% 
-  tidylog::mutate(status_start_yr = case_when(filled == TRUE & status_start_yr == "New" ~ NA_character_,
+  mutate(status_start_yr = case_when(filled == TRUE & status_start_yr == "New" ~ NA_character_,
                                               filled == TRUE & str_detect(status_start_yr, " - New") ~ str_remove(status_start_yr, " - New"),
                                               TRUE ~ status_start_yr)) %>%
   select(-filled)
+
+#flag statuses that are just New (ie don't have visit data during the year they were initiated)
+viz_collapsed <- viz_collapsed %>% 
+  mutate(orig_new = status_start_yr == "New")
+  
+#filter down new so these can be readded to the dataset to act like the year before in the viz
+#move new to start for placement on plot (will move manually to mid point)
+viz_collapsed_new <- viz_collapsed %>% 
+  filter(str_detect(status_start_yr, "New"),
+         fiscal_year != 2019) %>% 
+  mutate(fiscal_year = fiscal_year - 1,
+         status_start_yr = "New",
+         orig_new = FALSE)
+
+#bind the new data on and replace flagged news with NA
+viz_collapsed <- viz_collapsed %>%
+  mutate(status_start_yr = str_remove(status_start_yr, " - New")) %>% 
+  bind_rows(viz_collapsed_new) %>%
+  arrange(id, fiscal_year) %>%
+  mutate(status_start_yr = ifelse(orig_new == TRUE, NA_character_, status_start_yr)) %>% 
+  select(-orig_new)
+  
 
 #pull the future year's status
 viz_collapsed <- viz_collapsed %>% 
@@ -697,20 +718,12 @@ For each year, we want the start year to only start with TX_CURR as the base (an
 ```{r}
 #| label: viz_years
 
-  #removed LTFU from base year and get rid of "New" status from base year (captured from end year)
+  #removed LTFU from base year
   viz_collapsed <- viz_collapsed %>% 
     mutate(status_start_yr = 
              ifelse(str_detect(status_start_yr, "(LTFU|Aged Out)"), 
-                    NA_character_, status_start_yr),
-           status_start_yr = str_remove_all(status_start_yr, " - New")) %>% 
+                    NA_character_, status_start_yr)) %>% 
     filter(!(is.na(status_start_yr) & is.na(status_end_yr)))
-
- #move new to start for placement on plot (will move manually to mid point)
-  viz_collapsed <- viz_collapsed %>% 
-    mutate(status_start_yr = 
-             ifelse(is.na(status_start_yr) & str_detect(status_end_yr, "New"),
-                    "New", status_start_yr),
-           status_end_yr = str_remove_all(status_end_yr, " - New"))
   
   glimpse(viz_collapsed)
 ```
@@ -724,16 +737,16 @@ Lastly, we want to aggregate the status categories by year and order them way th
   viz_out <- viz_collapsed %>% 
     count(fiscal_year, status_start_yr, status_end_yr, name = "patients", sort = TRUE) %>% 
     mutate(status_start_yr = case_match(status_start_yr,
-                                        "Active" ~ "1. Active",
+                                        "New" ~ "1. New",
                                         "IIT" ~ "2. RTT",
-                                        "New" ~ "3. New",
+                                        "Active" ~ "3. Active",
                                         # .default = status_start_yr), #check that no missing categories
                                         .default = "4. Unclassified"),
            status_end_yr = case_match(status_end_yr,
                                         "Active" ~ "1. Active",
                                         "IIT" ~ "2. IIT",
-                                        "Aged Out" ~ "3. Aged Out",
-                                        "LTFU" ~ "4. LTFU",
+                                        "LTFU" ~ "3. LTFU",
+                                        "Aged Out" ~ "4. Aged Out",
                                         # .default = status_end_yr) #check that no missing categories
                                         .default = "5. Unclassified")
     ) 

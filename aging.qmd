@@ -149,7 +149,7 @@ clientlist <- clientlist %>%
 #| echo: false
 multi_vals <- clientlist %>% 
   filter(n() > 1,
-         by = c(id, mfl_code))
+         .by = c(id, mfl_code))
 
 multi_clients <- multi_vals %>% 
   distinct(id) %>% 
@@ -776,7 +776,7 @@ googledrive::drive_upload("aging.docx",
 
 #upload data outputs
 list.files("Dataout", full.names = TRUE) %>% 
-  walk(~drive_upload(.x,
+  walk(~googledrive::drive_upload(.x,
                      path = googledrive::as_id("1WPkwtd2BUpfAURm0QnriPUMCQOymLDJe"),
                      overwrite = TRUE))
        

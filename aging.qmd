@@ -669,6 +669,7 @@ viz_collapsed <- viz_collapsed %>%
 
 #fill missing years with status (should just be IIT)
 viz_collapsed <- viz_collapsed %>% 
+  # mutate(status_orig = status_start_yr) %>% 
   group_by(id) %>% 
   fill(ends_with("fy"), .direction = "downup") %>% 
   filter(between(fiscal_year, min_fy, max_fy)) %>% 
@@ -678,9 +679,7 @@ viz_collapsed <- viz_collapsed %>%
 
 #remove New from filled values
 viz_collapsed <- viz_collapsed %>% 
-  mutate(status_start_yr = case_when(filled == TRUE & status_start_yr == "New" ~ NA_character_,
-                                              filled == TRUE & str_detect(status_start_yr, " - New") ~ str_remove(status_start_yr, " - New"),
-                                              TRUE ~ status_start_yr)) %>%
+  mutate(status_start_yr = ifelse(filled == TRUE & status_start_yr == "New", NA_character_, status_start_yr)) %>%
   select(-filled)
 
 #flag statuses that are just New (ie don't have visit data during the year they were initiated)
@@ -694,6 +693,7 @@ viz_collapsed_new <- viz_collapsed %>%
          fiscal_year != 2019) %>% 
   mutate(fiscal_year = fiscal_year - 1,
          status_start_yr = "New",
+         # status_orig = NA_character_,
          orig_new = FALSE)
 
 #bind the new data on and replace flagged news with NA
@@ -707,6 +707,8 @@ viz_collapsed <- viz_collapsed %>%
 
 #pull the future year's status
 viz_collapsed <- viz_collapsed %>% 
+  complete(fiscal_year, nesting(id)) %>% 
+  arrange(id, fiscal_year) %>%
   mutate(status_end_yr = lead(status_start_yr, n = 1, order_by = fiscal_year),
          .by = id) 
   

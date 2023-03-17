@@ -644,13 +644,13 @@ We'll need to start with the fiscal year status data (`status_data_fy`) and aggr
     mutate(status = fct_relevel(status, "New", after = Inf)) %>% 
     arrange(id, fiscal_year, status) %>% 
     mutate(status = as.character(status)) %>%
-    summarise(status_start_yr = paste0(status, collapse = " - "),
+    summarise(status = paste0(status, collapse = " - "),
               .by = c(id, fiscal_year))
 
   glimpse(viz_collapsed)
 ```
 
-To make sure each patients exists each year and then pull the status forward of the next year.
+To make sure each patients exists each year and then pull the status forward of the prior year. To ensure no data are lost, we will create a full panel of years for each patient, flagging any years where there is filled values (`added`) and only keeping data between actual observed reported (using `min_fy` and `max_fy`). 
 
 ```{r}
 #| label: viz_next
@@ -665,56 +665,41 @@ viz_collapsed <- viz_collapsed %>%
 viz_collapsed <- viz_collapsed %>% 
   complete(fiscal_year, nesting(id)) %>% 
   arrange(id, fiscal_year) %>% 
-  mutate(added = case_when(is.na(status_start_yr) ~ TRUE))
+  mutate(added = case_when(is.na(status) ~ TRUE))
 
 #fill missing years with status (should just be IIT)
 viz_collapsed <- viz_collapsed %>% 
   group_by(id) %>% 
   fill(ends_with("fy"), .direction = "downup") %>% 
-  fill(status_start_yr, .direction = "down") %>% 
-  mutate(status_start_yr = case_when(between(fiscal_year, min_fy, max_fy) ~ status_start_yr)) %>% 
+  fill(status, .direction = "down") %>% 
+  mutate(status = case_when(between(fiscal_year, min_fy, max_fy) ~ status)) %>% 
   ungroup() %>% 
   select(-ends_with("fy"))
 
-#remove New from filled values
-viz_collapsed <- viz_collapsed %>% 
-  mutate(status_start_yr = case_when(added == TRUE & status_start_yr == "New" ~ NA_character_,
-                                     added == TRUE ~ str_remove(status_start_yr, " - New"),
-                                     TRUE ~ status_start_yr)) %>%
-  select(-added)
-
-#flag statuses that are just New (ie don't have visit data during the year they were initiated)
-viz_collapsed <- viz_collapsed %>% 
-  mutate(orig_new = status_start_yr == "New")
-
-#pull the future year's status
-viz_collapsed <- viz_collapsed %>% 
-  # complete(fiscal_year, nesting(id)) %>% 
-  # arrange(id, fiscal_year) %>%
-  mutate(status_end_yr = lead(status_start_yr, n = 1, order_by = fiscal_year),
-         .by = id)
-
-viz_collapsed <- viz_collapsed %>%  
-  mutate(status_start_yr = ifelse(str_detect(status_end_yr, "New", negate = TRUE) | is.na(status_end_yr), status_start_yr,  "New"),
-         across(ends_with("yr"), \(x) str_remove(x, " - New")),
-         status_end_yr = ifelse(status_end_yr == "New", NA_character_, status_start_yr)
-         # status_start_yr = ifelse(orig_new == TRUE, NA_character_, status_start_yr),
-         )
-  
-  glimpse(viz_collapsed)
+glimpse(viz_collapsed)
 ```
 
-For each year, we want the start year to only start with TX_CURR as the base (and IIT and new initiations will exist mid way through), so we want to exclude the LTFU and Aged Out clients from the start year. Due to data entry problems, we need to exclude the new status in the end year where the patient already was enrolled in treatment.
+Since the "New" status was appended on and collapsed into the year's status, we want to make sure this doesn't get filled down since a patient should only be new once. We do have a number of instances where a patient is newly initiated based on the master client list, but has no visits during the fiscal year he is initiated. If a client is new in a given year, we will add the "New" status to the prior year (`status_prior_yr`) for the visual to see it as an entry point.
 
 ```{r}
-#| label: viz_years
+#| label: viz_new
+#remove "New" from filled values (only want a patient to be new once)
+viz_collapsed <- viz_collapsed %>% 
+  mutate(status = case_when(added == TRUE & status == "New" ~ NA_character_,
+                            added == TRUE ~ str_remove(status, " - New"),
+                            TRUE ~ status)) %>%
+  select(-added)
 
-  #removed LTFU from base year
-  viz_collapsed <- viz_collapsed %>% 
-    mutate(status_start_yr = 
-             ifelse(str_detect(status_start_yr, "(LTFU|Aged Out)"), 
-                    NA_character_, status_start_yr)) %>% 
-    filter(!(is.na(status_start_yr) & is.na(status_end_yr)))
+#create a value for the end of the year, status excluding New (captured in prior)
+viz_collapsed <- viz_collapsed %>% 
+  mutate(status_end_yr = status %>% 
+           str_remove(" - New") %>% 
+           na_if("New")) 
+
+#pull the prior year's status (or New)
+viz_collapsed <- viz_collapsed %>% 
+  mutate(status_prior_yr = ifelse(str_detect(status, "New"), "New",
+    lag(status_end_yr, n = 1, order_by = fiscal_year)), .by = id)
   
   glimpse(viz_collapsed)
 ```
@@ -726,12 +711,13 @@ Lastly, we want to aggregate the status categories by year and order them way th
 
   #aggregate up by status groups for plot (and number for plot layout ordering)
   viz_out <- viz_collapsed %>% 
-    count(fiscal_year, status_start_yr, status_end_yr, name = "patients", sort = TRUE) %>% 
-    mutate(status_start_yr = case_match(status_start_yr,
+    filter(!is.na(status)) %>% 
+    count(fiscal_year, status_prior_yr, status_end_yr, name = "patients", sort = TRUE) %>% 
+    mutate(status_prior_yr = case_match(status_prior_yr,
                                         "New" ~ "1. New",
                                         "IIT" ~ "2. RTT",
                                         "Active" ~ "3. Active",
-                                        # .default = status_start_yr), #check that no missing categories
+                                        # .default = status_prior_yr), #check that no missing categories
                                         .default = "4. Unclassified"),
            status_end_yr = case_match(status_end_yr,
                                         "Active" ~ "1. Active",
@@ -741,10 +727,6 @@ Lastly, we want to aggregate the status categories by year and order them way th
                                         # .default = status_end_yr) #check that no missing categories
                                         .default = "5. Unclassified")
     ) 
-
-#up year to reflect out year
-viz_out <- viz_out %>% 
-  mutate(fiscal_year = fiscal_year + 1)
 
 glimpse(viz_out)
 

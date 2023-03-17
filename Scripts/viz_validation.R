@@ -13,22 +13,25 @@ status_data_fy_test <- status_data_fy %>%
 #what is the total we should be seeing?
 count(status_data_fy_test, status)
 
+count(status_data_fy_test, fiscal_year, status) %>% 
+  pivot_wider(names_from = fiscal_year, values_from = n)
+
 #collapse New row into end of year status
 viz_collapsed <- status_data_fy_test %>% 
   mutate(status = fct_relevel(status, "New", after = Inf)) %>% 
   arrange(id, fiscal_year, status) %>% 
   mutate(status = as.character(status)) %>%
-  summarise(status_start_yr = paste0(status, collapse = " - "),
+  summarise(status = paste0(status, collapse = " - "),
             .by = c(id, fiscal_year))
 
 #check
-count(viz_collapsed, status_start_yr)
+count(viz_collapsed, status)
 
 #create a wide view by id to know what to expect
 viz_collapsed %>% 
   arrange(fiscal_year) %>% 
   pivot_wider(names_from = fiscal_year,
-              values_from = status_start_yr)
+              values_from = status)
 
 #identify the min and max reporting year for each client (so we can remove extra values created in complete)
 viz_collapsed <- viz_collapsed %>% 
@@ -40,38 +43,66 @@ viz_collapsed <- viz_collapsed %>%
 viz_collapsed <- viz_collapsed %>% 
   complete(fiscal_year, nesting(id)) %>% 
   arrange(id, fiscal_year) %>% 
-  mutate(added = case_when(is.na(status_start_yr) ~ TRUE))
+  mutate(added = case_when(is.na(status) ~ TRUE))
+
+#check
+count(viz_collapsed, status)
 
 #fill missing years with status (should just be IIT)
 viz_collapsed <- viz_collapsed %>% 
   group_by(id) %>% 
   fill(ends_with("fy"), .direction = "downup") %>% 
-  fill(status_start_yr, .direction = "down") %>% 
-  mutate(status_start_yr = case_when(between(fiscal_year, min_fy, max_fy) ~ status_start_yr)) %>% 
+  fill(status, .direction = "down") %>% 
+  mutate(status = case_when(between(fiscal_year, min_fy, max_fy) ~ status)) %>% 
   ungroup() %>% 
   select(-ends_with("fy"))
 
+#check
+count(viz_collapsed, status)
+
 #remove New from filled values
 viz_collapsed <- viz_collapsed %>% 
-  mutate(status_start_yr = case_when(added == TRUE & status_start_yr == "New" ~ NA_character_,
-                                     added == TRUE ~ str_remove(status_start_yr, " - New"),
-                                     TRUE ~ status_start_yr)) %>%
+  mutate(status = case_when(added == TRUE & status == "New" ~ NA_character_,
+                                     added == TRUE ~ str_remove(status, " - New"),
+                                     TRUE ~ status)) %>%
   select(-added)
 
-#flag statuses that are just New (ie don't have visit data during the year they were initiated)
+#check
+count(viz_collapsed, status)
+
 viz_collapsed <- viz_collapsed %>% 
-  mutate(orig_new = status_start_yr == "New")
+  mutate(status_end_yr = status %>% 
+           str_remove(" - New") %>% 
+           na_if("New")) 
+
+#check
+count(viz_collapsed, status_end_yr)
 
 #pull the future year's status
 viz_collapsed <- viz_collapsed %>% 
-  # complete(fiscal_year, nesting(id)) %>% 
-  # arrange(id, fiscal_year) %>%
-  mutate(status_end_yr = lead(status_start_yr, n = 1, order_by = fiscal_year),
-         .by = id)
+  mutate(status_prior_yr = ifelse(str_detect(status, "New"), "New",
+    lag(status_end_yr, n = 1, order_by = fiscal_year)), .by = id)
 
-viz_collapsed <- viz_collapsed %>%  
-  mutate(status_start_yr = ifelse(str_detect(status_end_yr, "New", negate = TRUE) | is.na(status_end_yr), status_start_yr,  "New"),
-         across(ends_with("yr"), \(x) str_remove(x, " - New")),
-         status_end_yr = ifelse(status_end_yr == "New", NA_character_, status_start_yr)
-         # status_start_yr = ifelse(orig_new == TRUE, NA_character_, status_start_yr),
-  )
+#check
+count(viz_collapsed, status_end_yr)
+count(viz_collapsed, status_prior_yr)
+
+
+#check start and end active totals match
+full_join(viz_collapsed %>%
+            filter(!is.na(status_end_yr)) %>% 
+            count(fiscal_year, status = status_end_yr, name = "end"),
+          viz_collapsed %>%
+            filter(!is.na(status_prior_yr)) %>% 
+            count(fiscal_year = fiscal_year - 1, status = status_prior_yr, name = "prior")
+) %>% 
+  print(n = Inf)
+
+
+#check patients
+map(sample_id[50:70],
+    ~ viz_collapsed %>%
+      select(id, fiscal_year, status, status_prior_yr, status_end_yr) %>% 
+      filter(id == .x)
+)
+

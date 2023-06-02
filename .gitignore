@@ -5,6 +5,7 @@
 # Session Data files
 .RData
 .RDataTmp
+.DS_Store
 
 # User-specific files
 .Ruserdata
@@ -63,6 +64,22 @@ rsconnect/
 *.twbx
 *.pptx
 *.docx
+
+#nothing from these folders
+AI/*
+GIS/*
+Images/*
+Graphics/*
+#no data
+*.csv
+*.txt
+*.rds
+*.xlsx
+*.xls
+*.zip
+*.png
+*.twbx
+*.pptx
 
 #nothing from these folders
 AI/*

@@ -21,6 +21,7 @@ Before we import the data, we first will want to load the packages we'll be usin
 # library(tidylog, warn.conflicts = FALSE) #explicitly referenced for detailing filtering/merging results
 library(tidyverse)
 library(scales, warn.conflicts = FALSE)
+library(lubridate, warn.conflicts = FALSE)
 ```
 
 First we can import the master list...
@@ -29,16 +30,21 @@ First we can import the master list...
 #| label: import_client
 #| cache: true
 
-clientlist <- read_csv("Data/AgingOut_Feb162023.csv",
+# clientlist <- read_csv("Data/AgingOut_Feb162023.csv",
+#                        col_types = list(.default = "c",
+#                                         `ART Initiation Date` = "D"))
+
+clientlist <- read_csv("Data/AgingOutClients.csv",
                        col_types = list(.default = "c",
                                         `ART Initiation Date` = "D"))
 
 clientlist <- clientlist %>% 
-      rename(im=`Implementing Partner`, 
-             facility=`Facility Name`, 
-             mfl_code=`Facility MFL Code`,
+      rename(im = `Implementing Partner`, 
+             facility = `Facility Name`, 
+             mfl_code = `Facility MFL Code`,
              county=`County of Treatment`,
              id=`Client Number(De-identified)`, 
+             nupi=`NUPI(De-identified)`,
              sex=Sex, 
              orphan=Orphan, 
              residence=`County of Residence`,
@@ -53,13 +59,17 @@ glimpse(clientlist)
 
 ```
 
-...and then the visit data.
+...and the visit data.
 
 ```{r}
 #| label: import_visits
 #| cache: true
 
-visits_data <- read_csv("Data/Appointments.csv", 
+# visits_data <- read_csv("Data/Appointments.csv", 
+#                         na = c("", "NA", "NULL"),
+#                         col_types = list(.default = "c"))
+
+visits_data <- read_csv("Data/AgingOutVisits.csv", 
                         na = c("", "NA", "NULL"),
                         col_types = list(.default = "c"))
 
@@ -68,10 +78,60 @@ visits_data <- visits_data %>%
          facility=`Facility Name`, 
          mfl_code=`Facility MFL Code`,
          id=`Client Number(De-identified)`, 
+         nupi=`NUPI(De-identified)`, 
          appoint_date=`Appointment Date`, 
          visit_date=`Actual Visit Date`) 
 
-glimpse(visits_data)
+dplyr::glimpse(visits_data)
+```
+
+...and the exits data 
+
+```{r}
+#| label: import_exits
+#| cache: true
+
+exits_data <- read_csv("Data/AgingOut.Exits.csv", 
+                       na = c("", "NA", "NULL"),
+                       col_types = list(.default = "c"))
+
+exits_data <- exits_data %>% 
+  rename(im=`Implementing Partner`, 
+         id=`Client Number(De-identified)`,
+         nupi=`NUPI(De-identified)`,
+         facility=`Facility Name`, 
+         mfl_code=`Facility MFL Code`, 
+         exit_date=ExitDate, 
+         exit_reason=ExitReason,
+         exit_death_reason=ReasonForDeath,
+         exit_death_spec_reason=specificDeathReason) 
+
+unique(exits_data$exit_reason) |> sort()
+
+glimpse(exits_data)
+
+```
+
+...and then the HIS data 
+
+```{r}
+#| label: import_his_list
+#| cache: true
+
+his_data <- read_csv("Data/AgingOut.HISList.csv", 
+                     na = c("", "NA", "NULL"),
+                     col_types = list(.default = "c"))
+
+his_data <- his_data %>% 
+  rename(mfl_code=MFL_Code, 
+         facility=`Facility_Name`, 
+         county=County, 
+         sub_county=SubCounty, 
+         im=SDP,
+         agency=SDP_Agency) 
+
+glimpse(his_data)
+
 ```
 
 For simplicity, we will truncate the number of characters in the id, making it easier to review, but still keeping it unique.
@@ -81,24 +141,52 @@ For simplicity, we will truncate the number of characters in the id, making it e
 
 #capture the number of unique ids before truncating
   orig_unique <- length(unique(clientlist$id)) 
+  orig_nupi <- length(unique(clientlist$nupi))
 
 #truncate id to the last 9 characters in the client list
   clientlist <- clientlist %>% 
-    mutate(id = str_sub(id, -9))
+    mutate(id = str_sub(id, -9),
+           nupi = str_sub(nupi, -9))
 
 #are the truncated ids still unique?
   length(unique(clientlist$id)) == orig_unique
+  length(unique(clientlist$nupi)) == orig_nupi
   
-    paste("There are", length(unique(clientlist$id)) %>% comma, "unique clients")
+  paste("There are", length(unique(clientlist$id)) %>% comma, "unique clients")
+  paste("There are", length(unique(clientlist$nupi)) %>% comma, "unique national clients")
     
 #truncate id to the last 9 characters in the visit
   visits_data <- visits_data %>% 
-    mutate(id =  str_sub(id, -9))
+    mutate(id =  str_sub(id, -9),
+           nupi = str_sub(nupi, -9))
+  
+#are the truncated ids still unique?
+  length(unique(visits_data$id)) == orig_unique
+  
+  paste("There are", length(unique(visits_data$id)) %>% comma, "unique clients with visits vs", comma(orig_unique), "clients on file")
+  paste("There are", length(unique(visits_data$nupi)) %>% comma, "unique national clients with visits vs", comma(orig_nupi), "clients on file")
+  
+#truncate id to the last 9 characters in the exits
+  exits_data <- exits_data %>% 
+    mutate(id =  str_sub(id, -9),
+           nupi = str_sub(nupi, -9))
+  
+#are the truncated ids still unique?
+  length(unique(exits_data$id)) == orig_unique
+  
+#Are all exits clients recorded in the client list?
+  all(unique(exits_data$id) %in% unique(clientlist$id))
+  
+# Check HIS for Multiple IMs at a single facility
+  his_data %>% count(agency, sort = T)
+  his_data %>% count(im, sort = T)
+  his_data %>% count(agency, im, sort = T)
+  
 ```
 
 ## Munging: Master Client List
 
-Of the two datasets, we'll start by munging the master client list, `clientlist`. Looking at the data, we adjust the class of `DOB`, date of birth,  which is a string data-time variable and we want to store it as just as just a date.
+Of the four datasets, we'll start by munging the master client list, `clientlist`. Looking at the data, we adjust the class of `DOB`, date of birth,  which is a string data-time variable and we want to store it as just as just a date.
 
 ```{r}
 #| label: clients_dob
@@ -108,18 +196,25 @@ Of the two datasets, we'll start by munging the master client list, `clientlist`
     mutate(dob = as_date(dob) %>% ymd)
   
   glimpse(clientlist)
+  
 ```
 
-Within the master client list there are `r unique(clientlist$id) |> length() |> comma()` unique clients (`id`) despite there being `r nrow(clientlist) |> comma()` records. The extra rows are a result of the client visiting multiple facilities over the course of their care. Since the meta client data may slightly vary (e.g. the birth date may be entered differently or the ART regimen line at initiation may not match), we need to just pick on of these rows of observation. We will use the visits dataset, `visits_data`, to identify the last visit for a given client and then use the information available at this facility to replace the rest of the client metadata.
+Within the master client list there are `r unique(clientlist$id) |> length() |> comma()` unique clients (`id`) despite there being `r nrow(clientlist) |> comma()` records. The `r comma(nrow(clientlist) - unique(clientlist$id))` extra rows are a result of the client visiting multiple facilities over the course of their care (or a HIS deficiency in capturing unique clients at the national or program level). 
+Since the meta client data may slightly vary (e.g. the birth date may be entered differently or the ART regimen line at initiation may not match), we need to just pick on of these rows of observation. We will use the visits dataset, `visits_data`, to identify the last visit for a given client and then use the information available at this facility to replace the rest of the client metadata.
 
 ```{r}
 #| label: client_lastest
 
+#Identify clients with multiple site visits - nupi id should help but it's incomplete
+  clientlist %>% 
+    summarise(n = n_distinct(mfl_code), .by = c(id, nupi)) %>% 
+    filter(n > 1) %>% 
+    arrange(id)
+
 #identify the latest visit/current facility for a client
   curr_facility <- visits_data %>%
     mutate(visit_date = dmy(visit_date)) %>% 
-    filter(visit_date == max(visit_date),
-           .by = id) %>% 
+    filter(visit_date == max(visit_date), .by = id) %>% 
     distinct(id, mfl_code) %>% 
     mutate(current_facility = TRUE)
 
@@ -129,8 +224,7 @@ Within the master client list there are `r unique(clientlist$id) |> length() |> 
 #limit dataset to only key variables and join w/ current facility list
 clientlist <- clientlist %>%
   select(id, mfl_code, sex, dob, facility, county, date_art_init, reg_art_current) %>% 
-  mutate(n = n(),
-         .by = id) %>% 
+  mutate(n = n(), .by = id) %>% 
   tidylog::left_join(curr_facility, by = c("id", "mfl_code"))
 
 #retain meta data info at earlier facilities and replace with current
@@ -147,9 +241,11 @@ clientlist <- clientlist %>%
 ```{r}
 #| label: client_fac_dups
 #| echo: false
+
+# Note: Client #0DF268468 has 2 records with different dob, sex, and date_art_init
 multi_vals <- clientlist %>% 
-  filter(n() > 1,
-         .by = c(id, mfl_code))
+  filter(n() > 1, .by = c(id, mfl_code)) %>% # Get first row for same dob, sex, and date_art_init 
+  arrange(id, mfl_code)
 
 multi_clients <- multi_vals %>% 
   distinct(id) %>% 
@@ -173,6 +269,7 @@ Another data issue we noticed is that `r filter(clientlist, dob > date_art_init)
 ```{r}
 #| label: clients_wrong_init
 
+# Note: we might be excluding valid records due to poor data entry / validations
 clientlist <- clientlist %>% 
   tidylog::filter(dob <= date_art_init)
 
@@ -183,10 +280,10 @@ Lastly, for this analysis, we want to know when clients age out of the pediatric
 ```{r}
 #| label: clients_ageout
 
-    master_clientlist <- clientlist %>% 
-      mutate(date_age_out = dob %m+% years(15))
+master_clientlist <- clientlist %>% 
+  mutate(date_age_out = dob %m+% years(15))
 
-  glimpse(master_clientlist)
+glimpse(master_clientlist)
 ```
 So at the end of the day, we have `r unique(master_clientlist$id) %>% length() %>%  comma()` unique clients and `r nrow(master_clientlist) %>%  comma()` unique client x facility pairs.
 
@@ -212,7 +309,7 @@ master_clientlist %>%
                   str_sub(end = 4),
                 .names = "{col}_fy")
          ) %>% 
-  mutate(new = date_art_init_fy,
+  mutate(new = date_art_init_fy, # Use `curr` instead of new (I think this makes it clearer)
          agedout = date_age_out_fy) %>% 
   select(new, agedout) %>% 
   filter(!c(is.na(new) & is.na(agedout))) %>% 
@@ -221,8 +318,11 @@ master_clientlist %>%
                values_to = "fiscal_year",
                values_drop_na = TRUE) %>% 
   count(type, fiscal_year, name = "value") %>% 
-  pivot_wider(names_from = type) %>% 
-  filter(fiscal_year %in% paste0("FY", 19:22))
+  pivot_wider(names_from = type, values_from = value) %>% 
+  filter(
+    fiscal_year %in% paste0("FY", 19:22)
+    #!is.na(new) & !is.na(agedout)
+  )
 
 ```
 
@@ -239,7 +339,7 @@ We have the relational master client list and now it's time to munge the visit l
     
   #reorder columns for ease of review
     visits_data <- visits_data %>% 
-      relocate(id, facility, .before = 1) %>% 
+      relocate(id, nupi, facility, .before = 1) %>% 
       relocate(visit_date, .before = appoint_date)
     
   glimpse(visits_data)
@@ -249,9 +349,9 @@ We have the relational master client list and now it's time to munge the visit l
 #| label: visits_todrop
 #| echo: false
 
+# Drop all visit records not in clientlist
 ndrop <- visits_data %>% 
-  anti_join(master_clientlist,
-                     by = c("id", "facility", "mfl_code")) %>% 
+  anti_join(master_clientlist, by = c("id", "facility", "mfl_code")) %>% 
   nrow() %>% 
   comma()
 ```
@@ -260,6 +360,8 @@ We want to restrict the dataset to only clients who appear in the master client 
 
 ```{r}
 #| label: visits_semijoin
+
+# Keep only visit records in clientlist - 
 visits_data <- visits_data %>% 
   tidylog::semi_join(master_clientlist,
                      by = c("id", "facility", "mfl_code"))
@@ -270,6 +372,18 @@ visits_data <- visits_data %>%
 ```{r}
 #| label: visits_date_missing
 #| echo: false
+
+visits_data %>% 
+  filter(is.na(visit_date)) %>% 
+  nrow() %>% 
+  comma() %>% 
+  paste("# of records with no visit date =", .)
+
+visits_data %>% 
+  filter(is.na(appoint_date)) %>% 
+  nrow() %>% 
+  comma() %>% 
+  paste("# of records with no appointment date =", .)
 
 df_appt_placeholder <- visits_data %>% 
   filter(appoint_date == "1900-01-01") 
@@ -287,7 +401,8 @@ If you review the data, you'll find some problems with appointment dates. One ex
 
 ```{r}
 #| label:  visits_problems
-  #remove any visits that don't have a future appointment or an invalid date
+
+#remove any visits that don't have a future appointment or an invalid date
  visits_data <-  visits_data %>%  
       tidylog::filter(!is.na(appoint_date), 
                       appoint_date > visit_date,
@@ -360,11 +475,19 @@ We will want to remove any instances in the data where new initiations are occur
 ```{r}
 #| label: act_init_lim
 
+# Note: Are we filtering out the records or the patient entirely?
+patients_w_visits_errors <- merged_visits_data %>% 
+  tidylog::filter(visit_date < date_art_init) %>% 
+  select(id, mfl_code, dob, date_age_out, date_art_init, visit_date, next_visit_date) %>% 
+  arrange(id)
+
 merged_visits_data <- merged_visits_data %>% 
   tidylog::filter(visit_date >= date_art_init)
+
+any(patients_w_visits_errors %in% unique(merged_visits_data$id))
 ```
 
-Next, we can calculate the duration between actual visits. Based on PEPFAR's guidance, a patient would only be counted as lost 28 days after the planned gap (after missing their scheduled appointment).
+Next, we can calculate the duration between actual visits. Based on PEPFAR's guidance, a patient would only be counted as lost to follow up, 28 days after the planned gap (after missing their scheduled appointment).
 
 ```{r}
 #| label: act_duration
@@ -396,7 +519,8 @@ Since this analysis is retrospective, in addition to knowing if a client is lost
                               visit_gap_actual > visit_gap_allowed ~ TRUE, #B 
                               TRUE ~ FALSE),
              rtt = case_when(ltfu == TRUE & is.na(next_visit_date) ~ FALSE, # A+B
-                             ltfu == TRUE ~ TRUE),
+                             ltfu == TRUE ~ TRUE,
+                             TRUE ~ FALSE),
              agedout = visit_date > date_age_out)
 
   glimpse(merged_visits_data)
@@ -670,11 +794,11 @@ viz_collapsed <- viz_collapsed %>%
 #fill missing years with status (should just be IIT)
 viz_collapsed <- viz_collapsed %>% 
   group_by(id) %>% 
-  fill(ends_with("fy"), .direction = "downup") %>% 
+  #fill(ends_with("fy"), .direction = "downup") %>% 
   fill(status, .direction = "down") %>% 
   mutate(status = case_when(between(fiscal_year, min_fy, max_fy) ~ status)) %>% 
-  ungroup() %>% 
-  select(-ends_with("fy"))
+  ungroup() #%>% 
+  #select(-ends_with("fy"))
 
 glimpse(viz_collapsed)
 ```

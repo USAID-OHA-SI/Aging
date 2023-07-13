@@ -67,15 +67,12 @@ clientlist %>%
 ```
 
 
-
 ...and the visit data.
 
 ```{r}
 #| label: import_visits
 #| cache: true
 
-
-#file_visits <- "Data/Appointments.csv"
 file_visits <- "Data/AgingOutVisits.csv"
 
 visits_data <- read_csv(file_visits, 

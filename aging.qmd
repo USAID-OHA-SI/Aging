@@ -33,6 +33,7 @@ First we can import the master clients list...
 file_clientlist <- "Data/AgingOutClients.csv"
 
 clientlist <- read_csv("Data/AgingOutClients.csv",
+                       na = c("", "NA", "NULL"),
                        col_types = list(.default = "c",
                                         `ART Initiation Date` = "D"))
 
@@ -55,17 +56,12 @@ clientlist <- clientlist %>%
 
 glimpse(clientlist)
 
-```
-```{r}
-#| label:check_nupi
-#| include: false
-
 clientlist %>% 
   distinct(id, nupi) %>% 
-  count(nupi = is.na(nupi) | nupi == 'NULL') %>% 
+  count(nupi = is.na(nupi)) %>% 
   mutate(p = n / sum(n))
-```
 
+```
 
 ...and the visit data.
 
@@ -92,11 +88,7 @@ glimpse(visits_data)
 
 visits_data %>% 
   distinct(id, nupi) %>% 
-  mutate(nupi = case_when(
-    is.na(nupi) | nupi == 'NULL' ~ F,
-    TRUE ~ T
-  )) %>% 
-  count(nupi) %>% 
+  count(nupi = is.na(nupi)) %>% 
   mutate(p = n / sum(n))
 
 ```
@@ -128,11 +120,7 @@ glimpse(exits_data)
 
 exits_data %>% 
   distinct(id, nupi) %>% 
-  mutate(nupi = case_when(
-    is.na(nupi) | nupi == 'NULL' ~ F,
-    TRUE ~ T
-  )) %>% 
-  count(nupi) %>% 
+  count(nupi = is.na(nupi)) %>% 
   mutate(p = n / sum(n))
 
 # Exit reasons - Consider only Dead/ TO/ Stopped/ LTFU - Convert other options to missing
@@ -199,7 +187,7 @@ For simplicity, we will truncate the number of characters in the id, making it e
 
 #are the truncated ids still unique?
   length(unique(clientlist$id)) == orig_unique
-  length(unique(clientlist$uid)) == orig_unique
+  length(unique(clientlist$uid)) == orig_uunique
   length(unique(clientlist$nupi)) == orig_nupi
   
   paste("There are", length(unique(clientlist$id)) %>% comma, "unique clients")
@@ -267,10 +255,6 @@ For simplicity, we will truncate the number of characters in the id, making it e
     count(exit_reason) %>% 
     mutate(p = n / sum(n)) %>% 
     arrange(desc(n))
-  
-#are the truncated ids still unique?
-  paste("There are", length(unique(visits_data$id)) %>% 
-          comma, " clients who exited for different reasons")
   
 #Are all exits clients recorded in the client list?
   all(unique(exits_data$id) %in% unique(clientlist$id))

@@ -296,7 +296,7 @@ Of the four datasets, we'll start by munging the master client list, `clientlist
   
 ```
 
-Within the master client list there are `r unique(clientlist$id) |> length() |> comma()` unique clients (`id`) despite there being `r nrow(clientlist) |> comma()` records. The `r comma(nrow(clientlist) - unique(clientlist$id))` extra rows are a result of the client visiting multiple facilities over the course of their care (or a HIS deficiency in capturing unique clients at the national or program level). 
+Within the master client list there are `r unique(clientlist$id) |> length() |> comma()` unique clients (`id`) despite there being `r nrow(clientlist) |> comma()` records. The `r comma(nrow(clientlist) - length(unique(clientlist$id)))` extra rows are a result of the client visiting multiple facilities over the course of their care (or a HIS deficiency in capturing unique clients at the national or program level). 
 Since the meta client data may slightly vary (e.g. the birth date may be entered differently or the ART regimen line at initiation may not match), we need to just pick on of these rows of observation. We will use the visits dataset, `visits_data`, to identify the last visit for a given client and then use the information available at this facility to replace the rest of the client metadata.
 
 ```{r}

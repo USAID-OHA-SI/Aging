@@ -1,6 +1,6 @@
 ---
 title: "Tracking Pediatric LTFU + Aging Out | Kenya"
-author: "Aaron Chafetz, Nelly Maina, and Lydia Odero"
+author: "Aaron Chafetz, Baboyma Kagniniwa, Nelly Maina, and Lydia Odero"
 date: "`r format(Sys.Date(), '%B %d, %Y') |> as.character()`"
 format: docx
 editor: source

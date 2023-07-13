@@ -55,16 +55,18 @@ clientlist <- clientlist %>%
 
 glimpse(clientlist)
 
+```
+```{r}
+#| label:check_nupi
+#| include: false
+
 clientlist %>% 
   distinct(id, nupi) %>% 
-  mutate(nupi = case_when(
-    is.na(nupi) | nupi == 'NULL' ~ F,
-    TRUE ~ T
-  )) %>% 
-  count(nupi) %>% 
+  count(nupi = is.na(nupi) | nupi == 'NULL') %>% 
   mutate(p = n / sum(n))
-
 ```
+
+
 
 ...and the visit data.
 

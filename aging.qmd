@@ -30,7 +30,6 @@ First we can import the master clients list...
 #| label: import_client
 #| cache: true
 
-#file_clientlist <- "Data/AgingOut_Feb162023.csv"
 file_clientlist <- "Data/AgingOutClients.csv"
 
 clientlist <- read_csv("Data/AgingOutClients.csv",

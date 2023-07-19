@@ -621,7 +621,7 @@ merged_visits_data <- merged_visits_data %>%
 any(patients_w_visits_errors %in% unique(merged_visits_data$id))
 ```
 
-Next, we can calculate the duration between actual visits. Based on PEPFAR's guidance, a patient would only be counted as lost to follow up, 28 days after the planned gap (after missing their scheduled appointment).
+Next, we can calculate the duration between actual visits. Based on PEPFAR's guidance, a patient would only be counted as lost to follow up, 28 days after the planned gap (after missing their scheduled appointment). For Kenyan context, this has been configured to 30 days in the EMRs.
 
 ```{r}
 #| label: act_duration
@@ -641,9 +641,9 @@ Next, we can calculate the duration between actual visits. Based on PEPFAR's gui
 
 Since this analysis is retrospective, in addition to knowing if a client is lost, we know whether the client has returned to treatment. We can calculate the following based on their visit gaps and if they have a future appointment.
 
-**IIT (Previously set as LTFU) Logic**: Count a client as LTFU if (a) there is no future visit date (`next_visit_date`); or (b) the duration between visits  (`visit_gap_actual`) exceeds the allowable visit gap (`visit_gap_allowed`); and (c) not if the client scheduled to return after we have actual visit data for in the dataset (`max_visit`)
+**IIT (Previously set as LTFU) Logic**: Count a client as IIT if (a) there is no future visit date (`next_visit_date`); or (b) the duration between visits  (`visit_gap_actual`) exceeds the allowable visit gap (`visit_gap_allowed`); and (c) is not counted as IIT if the client is scheduled to return after we have actual visit data for the client in the dataset (`max_visit`)
 
-**IIT/RTT Logic**: Count a client as interrupted and returned to treatment (RTT) if (a) they were originally LTFU; and (b) they have an actual next visit date (`next_visit_date`)
+**IIT/RTT Logic**: Count a client as interrupted and returned to treatment (RTT) if (a) they were originally IIT; and (b) they have an actual next visit date (`next_visit_date`)
 
 **Aged Out Logic**: Count a client if the visit is after they turn 15 years old (`date_age_out`)
 
@@ -673,7 +673,7 @@ merged_visits_data <- merged_visits_data %>%
   tidylog::filter(agedout == FALSE)
 ```
 
-At this stage, we can now count all the patients as "Active" in the dataset. The patients will only become LTFU in the future after the `visit_gap_allowed` and will need to be added in as a separate row later in the analysis.
+At this stage, we can now count all the patients as "Active" in the dataset. The patients will only become IIT in the future after the `visit_gap_allowed` and will need to be added in as a separate row later in the analysis.
 
 ```{r}
 #| label: act_df
@@ -705,9 +705,9 @@ glimpse(date_ageout)
 
 ```
 
-### Status - LTFU
+### Status - IIT
 
-In the earlier section, we calculated when patients were active versus LTFU/ITT, but we need to actually append on distinct observations of when that occurs.
+In the earlier section, we calculated when patients were active versus ITT, but we need to actually append on distinct observations of when that occurs.
 
 ```{r}
 #| label: ltfu_df
@@ -736,7 +736,7 @@ In the earlier section, we calculated when patients were active versus LTFU/ITT,
 
 From the master client list, we can use the ART initiation date (`date_art_init`) to approximate TX_NEW as per PEPFAR MER guidance.
 
-It's important to note a few things: (a) The initiations are separate from a separate source than the visit data; (b) if a client is initiated, they should also have a active status (i.e. have visits data), though this isn't always true in the data; (c) active status **should** be inclusive of new initiations (similar to MER where TX_CURR includes TX_NEW); (d) some patients in data had initiation dates after one or many visits and these were removed in an earlier step; and (e) when a patient move to various clinics, their initiation date is repleted so we need to only keep on observation of the initiation date.
+It's important to note a few things: (a) The initiations are from a separate data extract (i.e. a different table in the database) than the visit data; (b) if a client is initiated, they should also have a active status (i.e. have visits data), though this isn't always true in the data; (c) active status **should** be inclusive of new initiations (similar to MER where TX_CURR includes TX_NEW); (d) some patients in data had initiation dates after one or many visits and these were removed in an earlier step; and (e) when a patient move to various clinics, their initiation date is repeated so we need to only keep on observation of the initiation date.
 
 ```{r}
 #| label: new_df
@@ -766,7 +766,7 @@ status_new <- master_clientlist %>%
 
 ## Appended Status Data
 
-We now have three separate datasets by status that need to be combined back together: Active, Aged Out, and LTFU/IIT. Once we bind these together, we need to remove any patients who didn't have any data in the visits log, but were created by binding on the age out date.
+We now have three separate datasets by status that need to be combined back together: Active, Aged Out, and IIT. Once we bind these together, we need to remove any patients who didn't have any data in the visits log, but were created by binding on the age out date.
 
 ```{r}
 #| label: appended_df
@@ -794,7 +794,7 @@ We now have three separate datasets by status that need to be combined back toge
 
 ### Quarter Status
 
-At this point, we have combined all the status data together except for new initiations (which are additive). We want to convert these calendar dates into status by fiscal quarter to approximate PEPFAR data, so we need to take the status of the last observation for each fiscal quarter or year. First up, we need to apply the periods and fiscal year based on the status date and then arrange the status types so that Active comes after LTFU (in the event they both occur on the same day).
+At this point, we have combined all the status data together except for new initiations (which are additive). We want to convert these calendar dates into status by fiscal quarter to approximate PEPFAR data, so we need to take the status of the last observation for each fiscal quarter or year. First up, we need to apply the periods and fiscal year based on the status date and then arrange the status types so that Active comes after IIT (in the event they both occur on the same day).
 
 ```{r}
 #| label: status_cleaning
